@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.pytest_cache/
+.venv/
+
+# Downloaded engine binaries (fetched by scripts/install_engines.py)
+bin/
+!bin/.gitkeep
+
+# Runtime artifacts
+findings*.json
+*.zip
+
+# OS
+.DS_Store
+Thumbs.db

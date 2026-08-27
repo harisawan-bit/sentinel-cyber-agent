@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sentinel-cyber-agent"
+version = "0.1.0"
+description = "Unified MIT-licensed cyber security orchestration agent"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.10"
+dependencies = [
+    "sherlock-project>=0.14.3",
+]
+
+[project.scripts]
+sentinel = "sentinel.cli:main"
+
+[tool.setuptools]
+packages = [
+    "sentinel",
+    "sentinel.core",
+    "sentinel.core.plugins",
+]
+
+[tool.setuptools.package-data]
+sentinel = ["py.typed"]
