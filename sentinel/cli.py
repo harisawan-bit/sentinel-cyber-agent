@@ -2,6 +2,7 @@
 from __future__ import annotations
 import argparse, json, sys
 from .core.orchestrator import Orchestrator
+from .core.report import render
 
 
 def main(argv=None) -> int:
@@ -14,6 +15,7 @@ def main(argv=None) -> int:
                     help="limit to stages: recon scan osint cloud")
     ap.add_argument("--json", action="store_true", help="emit raw JSON")
     ap.add_argument("--out", default=None, help="write findings JSON to file")
+    ap.add_argument("--report", default=None, help="write autonomous HTML report to file")
     args = ap.parse_args(argv)
 
     orch = Orchestrator()
@@ -23,6 +25,11 @@ def main(argv=None) -> int:
     if args.out:
         with open(args.out, "w", encoding="utf-8") as fh:
             json.dump(findings, fh, indent=2)
+
+    if args.report:
+        html = render(findings, title=" · ".join(args.targets[:3]))
+        with open(args.report, "w", encoding="utf-8") as fh:
+            fh.write(html)
 
     if args.json:
         print(json.dumps(findings, indent=2))

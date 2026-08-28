@@ -10,6 +10,8 @@ from .plugin import Plugin
 class Orchestrator:
     def __init__(self) -> None:
         self.plugins: Dict[str, Plugin] = {}
+        self.shared: Dict[str, Any] = {"techs": []}  # cross-plugin state
+        self.all_findings: List[Finding] = []
         self.load_plugins()
 
     def load_plugins(self) -> None:
@@ -37,7 +39,15 @@ class Orchestrator:
                     continue
                 try:
                     for f in p.run(target, self):
-                        findings.append(f.to_dict())
+                        d = f.to_dict()
+                        findings.append(d)
+                        self.all_findings.append(f)
+                        # collect tech tokens for OSV correlation
+                        if f.finding_type == "host":
+                            for tk in (f.metadata or {}).get("tech", []):
+                                token = tk.split("=", 1)[-1].lower()
+                                if token and token not in self.shared["techs"]:
+                                    self.shared["techs"].append(token)
                 except Exception as e:  # graceful degradation
                     findings.append(
                         Finding(
