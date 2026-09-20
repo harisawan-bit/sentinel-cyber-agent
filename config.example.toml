@@ -1,0 +1,182 @@
+# Sentinel 2.0 Configuration
+
+[general]
+# Run as daemon
+daemon = false
+# Scan schedule (cron)
+schedule = "0 */6 * * *"
+# Jitter in seconds (randomize scan times)
+jitter_seconds = 300
+# Data directory
+data_dir = "/var/lib/sentinel"
+# Log level
+log_level = "info"
+
+[dashboard]
+# Enable Nginx UI
+enabled = true
+# Listen address
+listen = "0.0.0.0:8080"
+# Domain for TLS (Let's Encrypt)
+domain = ""
+# JWT secret (auto-generated if empty)
+jwt_secret = ""
+# Allowed origins (comma-separated)
+allowed_origins = ""
+# mTLS certificate path (optional)
+mtls_ca_cert = ""
+# mTLS key path (optional)
+mtls_key = ""
+
+[mcp]
+# Enable MCP server
+enabled = true
+# Transport: stdio or http
+transport = "stdio"
+# HTTP listen address (if transport = http)
+listen = "127.0.0.1:9000"
+# Authentication token
+auth_token = ""
+# mTLS enabled
+mtls_enabled = false
+
+[malware]
+# Enable ClamAV scanning
+clamav_enabled = true
+# Enable YARA rule scanning
+yara_enabled = true
+# YARA rules directory
+yara_rules_dir = "/etc/sentinel/yara-rules"
+# On-access scanning (requires fanotify)
+on_access_enabled = true
+# Scan schedule (daily)
+daily_scan = "0 2 * * *"
+# Maximum scan size (MB)
+max_scan_size_mb = 100
+
+[firewall]
+# Enable nftables integration
+nftables_enabled = true
+# Auto-block malicious IPs
+auto_block = true
+# Block duration (1h, 24h, permanent)
+block_duration = "24h"
+# Rate limit threshold per minute
+rate_limit_per_minute = 100
+# CrowdSec integration
+crowdsec_enabled = true
+
+[alerts]
+# Alert channels (comma-separated: telegram,slack,discord,email,pagerruty,matrix,signal,ntfy)
+channels = "telegram"
+# Minimum severity to alert
+min_severity = "high"
+# Deduplication window in seconds
+dedup_window_seconds = 3600
+
+[alerts.telegram]
+bot_token = ""
+chat_id = ""
+parse_mode = "Markdown"
+
+[alerts.slack]
+webhook_url = ""
+
+[alerts.discord]
+webhook_url = ""
+
+[alerts.email]
+smtp_host = ""
+smtp_port = 587
+smtp_user = ""
+smtp_password = ""
+from = ""
+to = ""
+
+[alerts.pagerduty]
+integration_key = ""
+
+[alerts.matrix]
+homeserver = ""
+access_token = ""
+room_id = ""
+
+[alerts.signal]
+cli_path = "/usr/local/bin/signal-cli"
+number = ""
+group_id = ""
+
+[alerts.ntfy]
+topic = "sentinel-alerts"
+server = "https://ntfy.sh"
+
+[integrations]
+# Docker audit
+docker_enabled = true
+# Nginx Proxy Manager / Traefik audit
+proxy_enabled = true
+# Proxmox audit
+proxmox_enabled = false
+proxmox_host = ""
+proxmox_user = ""
+proxmox_token = ""
+# Home Assistant audit
+homeassistant_enabled = false
+homeassistant_url = ""
+homeassistant_token = ""
+# Pi-hole / AdGuard audit
+dns_filter_enabled = false
+dns_filter_url = ""
+# WireGuard peer monitoring
+wireguard_enabled = true
+
+[threat_intel]
+# CISA Known Exploited Vulnerabilities
+cisa_kev_enabled = true
+cisa_kev_url = "https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json"
+# OTX AlienVault
+otx_enabled = false
+otx_api_key = ""
+# AbuseIPDB
+abuseipdb_enabled = false
+abuseipdb_api_key = ""
+
+[compliance]
+# CIS benchmark scanning
+cis_enabled = true
+# CIS profile: ubuntu, debian, rhel
+cis_profile = "ubuntu"
+# Auto-harden (dry-run by default)
+auto_harden = false
+# Dry-run mode (always true unless explicitly set)
+dry_run = true
+
+[zero_day]
+# Behavioral baseline learning period (days)
+baseline_learning_days = 7
+# Anomaly detection sensitivity (0.0 - 1.0)
+anomaly_sensitivity = 0.85
+# ML model path
+model_path = "/var/lib/sentinel/models"
+# Honeypot integration (Cowrie)
+honeypot_enabled = false
+
+[plugins]
+# Plugin directory
+plugin_dir = "/etc/sentinel/plugins"
+# Enable specific plugins (comma-separated)
+enabled_plugins = "subfinder,httpx,nuclei,sherlock,prowler,crtsh,http-probe,osv-correlate"
+
+[ssh]
+# Enable SSH terminal in UI
+enabled = true
+# SSH host
+host = "127.0.0.1"
+# SSH port
+port = 22
+# SSH key path
+key_path = "/root/.ssh/id_rsa"
+# Session timeout (minutes)
+session_timeout = 30
+# MFA enabled
+mfa_enabled = false

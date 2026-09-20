@@ -1,0 +1,904 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sentinel — Homelab Security</title>
+<style>
+:root {
+  --bg-primary: #1a1a1a;
+  --bg-secondary: #2a2a2a;
+  --bg-tertiary: #333333;
+  --bg-card: #2d2d2d;
+  --bg-card-hover: #353535;
+  --border: #404040;
+  --border-light: #505050;
+  --text-primary: #d4c8b8;
+  --text-secondary: #a89f91;
+  --text-muted: #7a7368;
+  --navy: #1e3a5f;
+  --navy-light: #2a4a7f;
+  --navy-dark: #0f2744;
+  --accent: #4a6fa5;
+  --accent-light: #5a8fc5;
+  --critical: #c0392b;
+  --high: #e67e22;
+  --medium: #f1c40f;
+  --low: #3498db;
+  --info: #95a5a6;
+  --success: #27ae60;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font: 14px/1.5 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  min-height: 100vh;
+}
+
+/* Header */
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 24px;
+  background: linear-gradient(135deg, var(--bg-secondary) 0%, var(--bg-tertiary) 100%);
+  border-bottom: 1px solid var(--border);
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.logo {
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  color: var(--text-primary);
+}
+
+.logo span {
+  color: var(--accent-light);
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.status-badge {
+  padding: 6px 12px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+.status-live {
+  background: var(--navy);
+  color: var(--accent-light);
+  border: 1px solid var(--navy-light);
+}
+
+.status-offline {
+  background: var(--bg-tertiary);
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+}
+
+/* Main Layout */
+.main {
+  display: grid;
+  grid-template-columns: 240px 1fr;
+  height: calc(100vh - 61px);
+}
+
+/* Sidebar */
+.sidebar {
+  background: var(--bg-secondary);
+  border-right: 1px solid var(--border);
+  padding: 16px 0;
+  overflow-y: auto;
+}
+
+.nav-section {
+  margin-bottom: 24px;
+}
+
+.nav-title {
+  padding: 8px 20px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 20px;
+  color: var(--text-secondary);
+  text-decoration: none;
+  font-size: 13px;
+  font-weight: 500;
+  border-left: 3px solid transparent;
+  transition: all 0.15s;
+}
+
+.nav-item:hover {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+.nav-item.active {
+  background: var(--navy-dark);
+  color: var(--accent-light);
+  border-left-color: var(--accent);
+}
+
+.nav-icon {
+  width: 16px;
+  height: 16px;
+  opacity: 0.7;
+}
+
+/* Content */
+.content {
+  padding: 24px;
+  overflow-y: auto;
+  background: var(--bg-primary);
+}
+
+.page-title {
+  font-size: 24px;
+  font-weight: 600;
+  margin-bottom: 24px;
+  color: var(--text-primary);
+}
+
+/* Stats Grid */
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.stat-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 20px;
+  transition: background 0.15s;
+}
+
+.stat-card:hover {
+  background: var(--bg-card-hover);
+}
+
+.stat-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+}
+
+.stat-value {
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.stat-sub {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 4px;
+}
+
+/* Severity Heatmap */
+.heatmap {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 24px;
+  flex-wrap: wrap;
+}
+
+.heat-pill {
+  padding: 6px 14px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #fff;
+}
+
+.heat-critical { background: var(--critical); }
+.heat-high { background: var(--high); }
+.heat-medium { background: var(--medium); color: #000; }
+.heat-low { background: var(--low); }
+.heat-info { background: var(--info); color: #000; }
+
+/* Table */
+.table-container {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.table-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+}
+
+.table-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.table-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.btn {
+  padding: 8px 16px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  border: none;
+  transition: all 0.15s;
+}
+
+.btn-primary {
+  background: var(--navy);
+  color: var(--accent-light);
+  border: 1px solid var(--navy-light);
+}
+
+.btn-primary:hover {
+  background: var(--navy-light);
+}
+
+.btn-secondary {
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+}
+
+.btn-secondary:hover {
+  background: var(--border);
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+th, td {
+  text-align: left;
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--border);
+}
+
+th {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  background: var(--bg-secondary);
+}
+
+td {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+tr:hover td {
+  background: var(--bg-secondary);
+}
+
+.sev-badge {
+  display: inline-block;
+  padding: 3px 8px;
+  border-radius: 3px;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: #fff;
+}
+
+.sev-critical { background: var(--critical); }
+.sev-high { background: var(--high); }
+.sev-medium { background: var(--medium); color: #000; }
+.sev-low { background: var(--low); }
+.sev-info { background: var(--info); color: #000; }
+
+.value-cell {
+  max-width: 250px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+}
+
+.detail-cell {
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-muted);
+}
+
+.time-cell {
+  color: var(--text-muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.empty-row {
+  text-align: center;
+  padding: 60px 20px;
+  color: var(--text-muted);
+}
+
+/* Scan Bar */
+.scan-bar {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 24px;
+  padding: 16px 20px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.scan-bar input {
+  flex: 1;
+  padding: 10px 14px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-primary);
+  font-size: 13px;
+  outline: none;
+}
+
+.scan-bar input:focus {
+  border-color: var(--accent);
+}
+
+.scan-bar button {
+  padding: 10px 20px;
+  background: var(--navy);
+  border: 1px solid var(--navy-light);
+  border-radius: 4px;
+  color: var(--accent-light);
+  font-weight: 600;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.scan-bar button:hover:not(:disabled) {
+  background: var(--navy-light);
+}
+
+.scan-bar button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Config Panel */
+.config-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 16px;
+}
+
+.config-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 20px;
+}
+
+.config-card-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.config-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 0;
+}
+
+.config-label {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.config-value {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-family: 'JetBrains Mono', monospace;
+}
+
+/* Toggle */
+.toggle {
+  width: 36px;
+  height: 20px;
+  background: var(--bg-tertiary);
+  border-radius: 10px;
+  position: relative;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.toggle.active {
+  background: var(--navy);
+}
+
+.toggle::after {
+  content: '';
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  background: var(--text-muted);
+  border-radius: 50%;
+  top: 2px;
+  left: 2px;
+  transition: all 0.15s;
+}
+
+.toggle.active::after {
+  left: 18px;
+  background: var(--accent-light);
+}
+
+/* Terminal */
+.terminal-container {
+  background: #0a0a0a;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.terminal-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border);
+}
+
+.terminal-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+
+.dot-red { background: #ff5f56; }
+.dot-yellow { background: #ffbd2e; }
+.dot-green { background: #27c93f; }
+
+.terminal-title {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-left: 8px;
+}
+
+.terminal-body {
+  padding: 16px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  color: var(--text-secondary);
+  min-height: 300px;
+  max-height: 500px;
+  overflow-y: auto;
+}
+
+.terminal-prompt {
+  color: var(--accent-light);
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--bg-primary);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--border-light);
+}
+</style>
+</head>
+<body>
+
+<header class="header">
+  <div class="header-left">
+    <div class="logo">SENTINEL <span>2.0</span></div>
+  </div>
+  <div class="header-right">
+    <div class="status-badge status-offline" id="statusBadge">OFFLINE</div>
+  </div>
+</header>
+
+<div class="main">
+  <nav class="sidebar">
+    <div class="nav-section">
+      <div class="nav-title">Overview</div>
+      <a class="nav-item active" data-page="dashboard" href="#">
+        <span class="nav-icon">&#9673;</span> Dashboard
+      </a>
+      <a class="nav-item" data-page="findings" href="#">
+        <span class="nav-icon">&#9678;</span> Findings
+      </a>
+      <a class="nav-item" data-page="network" href="#">
+        <span class="nav-icon">&#9679;</span> Network Map
+      </a>
+    </div>
+    <div class="nav-section">
+      <div class="nav-title">Security</div>
+      <a class="nav-item" data-page="scan" href="#">
+        <span class="nav-icon">&#9670;</span> Scan Target
+      </a>
+      <a class="nav-item" data-page="firewall" href="#">
+        <span class="nav-icon">&#9675;</span> Firewall
+      </a>
+      <a class="nav-item" data-page="malware" href="#">
+        <span class="nav-icon">&#9676;</span> Malware Scan
+      </a>
+      <a class="nav-item" data-page="compliance" href="#">
+        <span class="nav-icon">&#9677;</span> Compliance
+      </a>
+    </div>
+    <div class="nav-section">
+      <div class="nav-title">Integrations</div>
+      <a class="nav-item" data-page="docker" href="#">
+        <span class="nav-icon">&#9680;</span> Docker
+      </a>
+      <a class="nav-item" data-page="proxy" href="#">
+        <span class="nav-icon">&#9681;</span> Proxy
+      </a>
+      <a class="nav-item" data-page="proxmox" href="#">
+        <span class="nav-icon">&#9682;</span> Proxmox
+      </a>
+      <a class="nav-item" data-page="alerts" href="#">
+        <span class="nav-icon">&#9683;</span> Alerts
+      </a>
+    </div>
+    <div class="nav-section">
+      <div class="nav-title">System</div>
+      <a class="nav-item" data-page="terminal" href="#">
+        <span class="nav-icon">&#9684;</span> Terminal
+      </a>
+      <a class="nav-item" data-page="config" href="#">
+        <span class="nav-icon">&#9685;</span> Config
+      </a>
+      <a class="nav-item" data-page="logs" href="#">
+        <span class="nav-icon">&#9686;</span> Logs
+      </a>
+    </div>
+  </nav>
+
+  <main class="content" id="content">
+    <!-- Dashboard Page -->
+    <div id="page-dashboard">
+      <h1 class="page-title">Security Dashboard</h1>
+      
+      <div class="stats-grid" id="statsGrid">
+        <div class="stat-card">
+          <div class="stat-label">HOSTNAME</div>
+          <div class="stat-value" id="statHostname">--</div>
+          <div class="stat-sub" id="statKernel">--</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">CPU</div>
+          <div class="stat-value" id="statCpu">--</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">RAM</div>
+          <div class="stat-value" id="statRam">--</div>
+          <div class="stat-sub" id="statRamTotal">--</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">FINDINGS</div>
+          <div class="stat-value" id="statFindings">0</div>
+          <div class="stat-sub">active threats tracked</div>
+        </div>
+      </div>
+
+      <div class="heatmap" id="heatmap"></div>
+
+      <div class="scan-bar">
+        <input type="text" id="scanTarget" placeholder="Enter domain or IP to scan..." onkeydown="if(event.key==='Enter')triggerScan()">
+        <button id="scanBtn" onclick="triggerScan()">SCAN</button>
+      </div>
+
+      <div class="table-container">
+        <div class="table-header">
+          <div class="table-title">Security Findings</div>
+          <div class="table-actions">
+            <button class="btn btn-secondary" onclick="exportFindings()">Export</button>
+            <button class="btn btn-primary" onclick="refreshFindings()">Refresh</button>
+          </div>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>SEVERITY</th>
+              <th>TOOL</th>
+              <th>TYPE</th>
+              <th>VALUE</th>
+              <th>DETAIL</th>
+              <th>TIME</th>
+              <th>ACTIONS</th>
+            </tr>
+          </thead>
+          <tbody id="findingsBody">
+            <tr><td colspan="7" class="empty-row">No findings yet — the system is monitoring...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Terminal Page -->
+    <div id="page-terminal" style="display:none">
+      <h1 class="page-title">SSH Terminal</h1>
+      <div class="terminal-container">
+        <div class="terminal-header">
+          <span class="terminal-dot dot-red"></span>
+          <span class="terminal-dot dot-yellow"></span>
+          <span class="terminal-dot dot-green"></span>
+          <span class="terminal-title">root@sentinel</span>
+        </div>
+        <div class="terminal-body" id="terminalBody">
+          <div>Sentinel Terminal v2.0</div>
+          <div>Connect to local SSH for full system access.</div>
+          <br>
+          <div><span class="terminal-prompt">sentinel $</span> <span id="terminalInput"></span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Config Page -->
+    <div id="page-config" style="display:none">
+      <h1 class="page-title">Configuration</h1>
+      <div class="config-grid">
+        <div class="config-card">
+          <div class="config-card-title">General</div>
+          <div class="config-row">
+            <span class="config-label">Daemon Mode</span>
+            <div class="toggle active" onclick="this.classList.toggle('active')"></div>
+          </div>
+          <div class="config-row">
+            <span class="config-label">Log Level</span>
+            <span class="config-value">info</span>
+          </div>
+          <div class="config-row">
+            <span class="config-label">Data Directory</span>
+            <span class="config-value">/var/lib/sentinel</span>
+          </div>
+        </div>
+        <div class="config-card">
+          <div class="config-card-title">MCP Server</div>
+          <div class="config-row">
+            <span class="config-label">Enabled</span>
+            <div class="toggle active" onclick="this.classList.toggle('active')"></div>
+          </div>
+          <div class="config-row">
+            <span class="config-label">Transport</span>
+            <span class="config-value">stdio</span>
+          </div>
+          <div class="config-row">
+            <span class="config-label">Auth</span>
+            <span class="config-value">token</span>
+          </div>
+        </div>
+        <div class="config-card">
+          <div class="config-card-title">Malware Scanning</div>
+          <div class="config-row">
+            <span class="config-label">ClamAV</span>
+            <div class="toggle active" onclick="this.classList.toggle('active')"></div>
+          </div>
+          <div class="config-row">
+            <span class="config-label">YARA</span>
+            <div class="toggle active" onclick="this.classList.toggle('active')"></div>
+          </div>
+          <div class="config-row">
+            <span class="config-label">On-Access Scan</span>
+            <div class="toggle" onclick="this.classList.toggle('active')"></div>
+          </div>
+        </div>
+        <div class="config-card">
+          <div class="config-card-title">Alerts</div>
+          <div class="config-row">
+            <span class="config-label">Telegram</span>
+            <div class="toggle active" onclick="this.classList.toggle('active')"></div>
+          </div>
+          <div class="config-row">
+            <span class="config-label">Slack</span>
+            <div class="toggle" onclick="this.classList.toggle('active')"></div>
+          </div>
+          <div class="config-row">
+            <span class="config-label">Discord</span>
+            <div class="toggle" onclick="this.classList.toggle('active')"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Placeholder pages -->
+    <div id="page-findings" style="display:none"><h1 class="page-title">All Findings</h1><p style="color:var(--text-muted)">Findings history and filtering options.</p></div>
+    <div id="page-network" style="display:none"><h1 class="page-title">Network Map</h1><p style="color:var(--text-muted)">Auto-discovered network topology.</p></div>
+    <div id="page-scan" style="display:none"><h1 class="page-title">Scan Target</h1><p style="color:var(--text-muted)">Configure and run security scans.</p></div>
+    <div id="page-firewall" style="display:none"><h1 class="page-title">Firewall</h1><p style="color:var(--text-muted)">nftables rules and blocklist management.</p></div>
+    <div id="page-malware" style="display:none"><h1 class="page-title">Malware Scan</h1><p style="color:var(--text-muted)">ClamAV and YARA scanning controls.</p></div>
+    <div id="page-compliance" style="display:none"><h1 class="page-title">Compliance</h1><p style="color:var(--text-muted)">CIS Benchmark scanning and reports.</p></div>
+    <div id="page-docker" style="display:none"><h1 class="page-title">Docker Audit</h1><p style="color:var(--text-muted)">Container security assessment.</p></div>
+    <div id="page-proxy" style="display:none"><h1 class="page-title">Proxy Audit</h1><p style="color:var(--text-muted)">Reverse proxy configuration audit.</p></div>
+    <div id="page-proxmox" style="display:none"><h1 class="page-title">Proxmox Audit</h1><p style="color:var(--text-muted)">VM and container security.</p></div>
+    <div id="page-alerts" style="display:none"><h1 class="page-title">Alert Channels</h1><p style="color:var(--text-muted)">Configure notifications.</p></div>
+    <div id="page-logs" style="display:none"><h1 class="page-title">System Logs</h1><p style="color:var(--text-muted)">View and search system logs.</p></div>
+  </main>
+</div>
+
+<script>
+const SEV_ORDER = ['critical', 'high', 'medium', 'low', 'info'];
+const SEV_CLASSES = {critical:'sev-critical',high:'sev-high',medium:'sev-medium',low:'sev-low',info:'sev-info'};
+const HEAT_CLASSES = {critical:'heat-critical',high:'heat-high',medium:'heat-medium',low:'heat-low',info:'heat-info'};
+
+let findings = [];
+let ws = null;
+
+// Navigation
+document.querySelectorAll('.nav-item').forEach(item => {
+  item.addEventListener('click', e => {
+    e.preventDefault();
+    document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
+    item.classList.add('active');
+    const page = item.dataset.page;
+    document.querySelectorAll('[id^="page-"]').forEach(p => p.style.display = 'none');
+    const el = document.getElementById('page-' + page);
+    if (el) el.style.display = 'block';
+  });
+});
+
+// WebSocket
+function connectWs() {
+  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  ws = new WebSocket(`${proto}//${location.host}/ws`);
+  ws.onopen = () => {
+    document.getElementById('statusBadge').classList.add('connected');
+    document.getElementById('statusBadge').textContent = 'LIVE';
+  };
+  ws.onclose = () => {
+    document.getElementById('statusBadge').classList.remove('connected');
+    document.getElementById('statusBadge').textContent = 'OFFLINE';
+    setTimeout(connectWs, 3000);
+  };
+  ws.onmessage = e => {
+    try {
+      const d = JSON.parse(e.data);
+      if (d.type === 'finding' && d.payload) {
+        findings.unshift(d.payload);
+        if (findings.length > 1000) findings.pop();
+        renderFindings();
+      }
+    } catch(err) {}
+  };
+}
+
+// API calls
+async function fetchStatus() {
+  try {
+    const r = await fetch('/api/status');
+    if (r.ok) {
+      const s = await r.json();
+      document.getElementById('statHostname').textContent = s.hostname || '--';
+      document.getElementById('statKernel').textContent = s.kernel || '--';
+      document.getElementById('statCpu').textContent = (s.cpu || 0).toFixed(1) + '%';
+      document.getElementById('statRam').textContent = (s.ram_percent || 0).toFixed(1) + '%';
+      document.getElementById('statRamTotal').textContent = (s.ram_total_gb || 0).toFixed(1) + ' GB total';
+    }
+  } catch(e) { console.error('status fetch failed:', e); }
+}
+
+function renderFindings() {
+  document.getElementById('statFindings').textContent = findings.length;
+  
+  const counts = {};
+  SEV_ORDER.forEach(s => counts[s] = 0);
+  findings.forEach(f => { if (counts[f.severity] !== undefined) counts[f.severity]++; });
+  
+  document.getElementById('heatmap').innerHTML = SEV_ORDER.map(s => 
+    `<div class="heat-pill ${HEAT_CLASSES[s]}">${s.toUpperCase()}: ${counts[s]}</div>`
+  ).join('');
+  
+  const tbody = document.getElementById('findingsBody');
+  if (findings.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="7" class="empty-row">No findings yet — the system is monitoring...</td></tr>';
+    return;
+  }
+  tbody.innerHTML = findings.slice(0, 100).map(f => `<tr>
+    <td><span class="sev-badge ${SEV_CLASSES[f.severity] || 'sev-info'}">${(f.severity || 'info').toUpperCase()}</span></td>
+    <td>${f.tool || '-'}</td>
+    <td>${f.finding_type || '-'}</td>
+    <td class="value-cell" title="${f.value || ''}">${f.value || '-'}</td>
+    <td class="detail-cell">${f.detail || '-'}</td>
+    <td class="time-cell">${f.timestamp ? new Date(f.timestamp).toLocaleString() : '-'}</td>
+    <td><button class="btn btn-secondary" style="padding:4px 8px;font-size:11px" onclick="blockIP('${f.value}')">BLOCK</button></td>
+  </tr>`).join('');
+}
+
+async function triggerScan() {
+  const target = document.getElementById('scanTarget').value.trim();
+  if (!target) return;
+  const btn = document.getElementById('scanBtn');
+  btn.disabled = true; btn.textContent = 'SCANNING...';
+  try {
+    await fetch('/api/findings/scan', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({target})
+    });
+  } catch(e) { console.error('scan failed:', e); }
+  btn.disabled = false; btn.textContent = 'SCAN';
+}
+
+function blockIP(ip) {
+  fetch('/api/block', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ip})
+  });
+}
+
+function exportFindings() {
+  const blob = new Blob([JSON.stringify(findings, null, 2)], {type: 'application/json'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'findings.json'; a.click();
+}
+
+function refreshFindings() { fetchStatus(); }
+
+// Init
+fetchStatus();
+connectWs();
+setInterval(fetchStatus, 10000);
+</script>
+</body>
+</html>

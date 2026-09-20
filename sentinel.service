@@ -1,0 +1,32 @@
+[Unit]
+Description=Sentinel 2.0 - Homelab Security Platform
+Documentation=https://github.com/harisawan-bit/sentinel-cyber-agent
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/sentinel --daemon --config /etc/sentinel/config.toml
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=always
+RestartSec=10
+User=root
+Group=root
+
+# Security hardening
+NoNewPrivileges=false
+ProtectSystem=false
+ProtectHome=false
+PrivateTmp=false
+
+# Resource limits
+MemoryMax=200M
+CPUQuota=10%
+TasksMax=50
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=sentinel
+
+[Install]
+WantedBy=multi-user.target
