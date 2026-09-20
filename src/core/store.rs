@@ -1,8 +1,8 @@
 // src/core/store.rs - Findings database
-use anyhow::Result;
-use rusqlite::{params, Connection};
-use std::path::Path;
 use super::orchestrator::Finding;
+use anyhow::Result;
+use rusqlite::{Connection, params};
+use std::path::Path;
 
 pub struct FindingsStore {
     conn: Connection,
@@ -85,7 +85,10 @@ impl FindingsStore {
                 target: row.get(4)?,
                 severity: row.get(5)?,
                 detail: row.get(6)?,
-                metadata: row.get(7).ok().and_then(|s: String| serde_json::from_str(&s).ok()),
+                metadata: row
+                    .get(7)
+                    .ok()
+                    .and_then(|s: String| serde_json::from_str(&s).ok()),
                 timestamp: chrono::DateTime::parse_from_rfc3339(&row.get::<_, String>(8)?)
                     .unwrap_or_default()
                     .with_timezone(&chrono::Utc),
@@ -113,7 +116,10 @@ impl FindingsStore {
                 target: row.get(4)?,
                 severity: row.get(5)?,
                 detail: row.get(6)?,
-                metadata: row.get(7).ok().and_then(|s: String| serde_json::from_str(&s).ok()),
+                metadata: row
+                    .get(7)
+                    .ok()
+                    .and_then(|s: String| serde_json::from_str(&s).ok()),
                 timestamp: chrono::DateTime::parse_from_rfc3339(&row.get::<_, String>(8)?)
                     .unwrap_or_default()
                     .with_timezone(&chrono::Utc),
@@ -128,12 +134,16 @@ impl FindingsStore {
     }
 
     pub fn count(&self) -> Result<i64> {
-        let count: i64 = self.conn.query_row("SELECT COUNT(*) FROM findings", [], |row| row.get(0))?;
+        let count: i64 = self
+            .conn
+            .query_row("SELECT COUNT(*) FROM findings", [], |row| row.get(0))?;
         Ok(count)
     }
 
     pub fn delete(&self, id: &str) -> Result<bool> {
-        let affected = self.conn.execute("DELETE FROM findings WHERE id = ?1", [id])?;
+        let affected = self
+            .conn
+            .execute("DELETE FROM findings WHERE id = ?1", [id])?;
         Ok(affected > 0)
     }
 

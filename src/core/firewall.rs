@@ -3,10 +3,10 @@ use anyhow::Result;
 /// Block an IP via nftables
 pub fn block(ip: &str) -> Result<()> {
     tracing::info!(ip = ip, "Blocking IP via nftables...");
-    
+
     // Add to nftables set
     // sentinel blocklist add ip
-    
+
     Ok(())
 }
 
