@@ -1,4 +1,5 @@
 // src/main.rs
+#![allow(dead_code, unused_imports, unused_variables)]
 mod alerting;
 mod api;
 mod core;
