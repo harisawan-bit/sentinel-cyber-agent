@@ -82,13 +82,16 @@ async fn main() -> Result<()> {
     } else if let Some(target) = &cli.target {
         let stages = cli.stages.map(|s| s.split(',').map(String::from).collect());
         let findings = core::orchestrator::scan(target, stages).await?;
-        
+
         if cli.json {
             println!("{}", serde_json::to_string_pretty(&findings)?);
         } else {
             println!("Sentinel: {} findings", findings.len());
             for f in findings.iter().take(80) {
-                println!("  [{:<8}] {:<14} {}  ({})", f.severity, f.finding_type, f.value, f.tool);
+                println!(
+                    "  [{:<8}] {:<14} {}  ({})",
+                    f.severity, f.finding_type, f.value, f.tool
+                );
             }
         }
         if let Some(path) = &cli.output {
@@ -119,83 +122,122 @@ fn print_help() {
 
 async fn run_stress_test() -> Result<()> {
     use std::time::Instant;
-    
+
     println!("\n=== Sentinel 2.0 Stress Test ===\n");
-    
+
     let mut passed = 0;
     let mut failed = 0;
-    
-    // Test 1: System status
+
     print!("  System status: ");
     let start = Instant::now();
     match core::status::show().await {
-        Ok(_) => { println!("PASS ({:?})", start.elapsed()); passed += 1; }
-        Err(e) => { println!("FAIL: {} ({:?})", e, start.elapsed()); failed += 1; }
+        Ok(_) => {
+            println!("PASS ({:?})", start.elapsed());
+            passed += 1;
+        }
+        Err(e) => {
+            println!("FAIL: {} ({:?})", e, start.elapsed());
+            failed += 1;
+        }
     }
-    
-    // Test 2: Security status
+
     print!("  Security status: ");
     let start = Instant::now();
     let _ = security::status().await;
     println!("PASS ({:?})", start.elapsed());
     passed += 1;
-    
-    // Test 3: Firewall setup
+
     print!("  Firewall setup: ");
     let start = Instant::now();
     match security::firewall::setup_nftables().await {
-        Ok(_) => { println!("PASS ({:?})", start.elapsed()); passed += 1; }
-        Err(_) => { println!("SKIP ({:?})", start.elapsed()); passed += 1; }
+        Ok(_) => {
+            println!("PASS ({:?})", start.elapsed());
+            passed += 1;
+        }
+        Err(_) => {
+            println!("SKIP ({:?})", start.elapsed());
+            passed += 1;
+        }
     }
-    
-    // Test 4: Block IP
+
     print!("  Block IP: ");
     let start = Instant::now();
     match security::firewall::block_ip("192.168.1.100").await {
-        Ok(_) => { println!("PASS ({:?})", start.elapsed()); passed += 1; }
-        Err(_) => { println!("SKIP ({:?})", start.elapsed()); passed += 1; }
+        Ok(_) => {
+            println!("PASS ({:?})", start.elapsed());
+            passed += 1;
+        }
+        Err(_) => {
+            println!("SKIP ({:?})", start.elapsed());
+            passed += 1;
+        }
     }
-    
-    // Test 5: Compliance scan
+
     print!("  Compliance scan: ");
     let start = Instant::now();
     match core::compliance::scan().await {
-        Ok(_) => { println!("PASS ({:?})", start.elapsed()); passed += 1; }
-        Err(_) => { println!("SKIP ({:?})", start.elapsed()); passed += 1; }
+        Ok(_) => {
+            println!("PASS ({:?})", start.elapsed());
+            passed += 1;
+        }
+        Err(_) => {
+            println!("SKIP ({:?})", start.elapsed());
+            passed += 1;
+        }
     }
-    
-    // Test 6: Scan target
+
     print!("  Scan target: ");
     let start = Instant::now();
     match core::orchestrator::scan("example.com", None).await {
-        Ok(_) => { println!("PASS ({:?})", start.elapsed()); passed += 1; }
-        Err(_) => { println!("SKIP ({:?})", start.elapsed()); passed += 1; }
+        Ok(_) => {
+            println!("PASS ({:?})", start.elapsed());
+            passed += 1;
+        }
+        Err(_) => {
+            println!("SKIP ({:?})", start.elapsed());
+            passed += 1;
+        }
     }
-    
-    // Test 7: Malware scan
+
     print!("  Malware scan: ");
     let start = Instant::now();
     match malware::scan_full().await {
-        Ok(_) => { println!("PASS ({:?})", start.elapsed()); passed += 1; }
-        Err(_) => { println!("SKIP ({:?})", start.elapsed()); passed += 1; }
+        Ok(_) => {
+            println!("PASS ({:?})", start.elapsed());
+            passed += 1;
+        }
+        Err(_) => {
+            println!("SKIP ({:?})", start.elapsed());
+            passed += 1;
+        }
     }
-    
-    // Test 8: Docker audit
+
     print!("  Docker audit: ");
     let start = Instant::now();
     match integrations::audit_docker().await {
-        Ok(_) => { println!("PASS ({:?})", start.elapsed()); passed += 1; }
-        Err(_) => { println!("SKIP ({:?})", start.elapsed()); passed += 1; }
+        Ok(_) => {
+            println!("PASS ({:?})", start.elapsed());
+            passed += 1;
+        }
+        Err(_) => {
+            println!("SKIP ({:?})", start.elapsed());
+            passed += 1;
+        }
     }
-    
-    // Test 9: Response playbook
+
     print!("  Response playbook: ");
     let start = Instant::now();
     match response::playbook::execute("brute_force", "test").await {
-        Ok(_) => { println!("PASS ({:?})", start.elapsed()); passed += 1; }
-        Err(_) => { println!("SKIP ({:?})", start.elapsed()); passed += 1; }
+        Ok(_) => {
+            println!("PASS ({:?})", start.elapsed());
+            passed += 1;
+        }
+        Err(_) => {
+            println!("SKIP ({:?})", start.elapsed());
+            passed += 1;
+        }
     }
-    
+
     println!("\n=== Results: {} passed, {} failed ===", passed, failed);
     Ok(())
 }

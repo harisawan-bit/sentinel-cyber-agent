@@ -13,27 +13,29 @@ pub async fn init() -> Result<()> {
 
 /// Handle a security finding
 pub async fn handle_finding(finding: &serde_json::Value) -> Result<()> {
-    let severity = finding.get("severity")
+    let severity = finding
+        .get("severity")
         .and_then(|s| s.as_str())
         .unwrap_or("info");
-    
-    let finding_type = finding.get("finding_type")
+
+    let finding_type = finding
+        .get("finding_type")
         .and_then(|s| s.as_str())
         .unwrap_or("unknown");
-    
+
     match severity {
         "critical" => handle_critical(finding, finding_type).await?,
         "high" => handle_high(finding, finding_type).await?,
         "medium" => handle_medium(finding, finding_type).await?,
         _ => tracing::info!(finding = ?finding, "Low severity finding"),
     }
-    
+
     Ok(())
 }
 
 async fn handle_critical(finding: &serde_json::Value, finding_type: &str) -> Result<()> {
     tracing::error!(finding = ?finding, "CRITICAL finding");
-    
+
     match finding_type {
         "ransomware_detected" => {
             // Isolate affected container/host
@@ -63,13 +65,13 @@ async fn handle_critical(finding: &serde_json::Value, finding_type: &str) -> Res
         }
         _ => {}
     }
-    
+
     Ok(())
 }
 
 async fn handle_high(finding: &serde_json::Value, finding_type: &str) -> Result<()> {
     tracing::warn!(finding = ?finding, "HIGH finding");
-    
+
     match finding_type {
         "brute_force" => {
             if let Some(ip) = finding.get("value").and_then(|v| v.as_str()) {
@@ -78,7 +80,7 @@ async fn handle_high(finding: &serde_json::Value, finding_type: &str) -> Result<
         }
         _ => {}
     }
-    
+
     Ok(())
 }
 
@@ -103,7 +105,16 @@ async fn create_snapshot(name: &str) -> Result<()> {
 async fn block_ip(ip: &str) -> Result<()> {
     tracing::info!(ip = ip, "Blocking IP");
     let _ = tokio::process::Command::new("nft")
-        .args(&["add", "element", "inet", "sentinel", "blocklist", "{", ip, "}"])
+        .args(&[
+            "add",
+            "element",
+            "inet",
+            "sentinel",
+            "blocklist",
+            "{",
+            ip,
+            "}",
+        ])
         .output()
         .await;
     Ok(())

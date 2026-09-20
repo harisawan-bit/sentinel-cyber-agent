@@ -5,13 +5,13 @@ use tracing;
 /// Initialize all hardening measures
 pub async fn init() -> Result<()> {
     tracing::info!("Initializing system hardening...");
-    
+
     // Set secure sysctl values
     secure_sysctl().await?;
-    
+
     // Disable core dumps
     disable_core_dumps().await?;
-    
+
     tracing::info!("System hardening initialized");
     Ok(())
 }
@@ -51,14 +51,14 @@ pub async fn secure_sysctl() -> Result<()> {
         ("vm.mmap_rnd_bits", "32"),
         ("vm.mmap_rnd_compat_bits", "16"),
     ];
-    
+
     for (key, value) in settings.iter() {
         let _ = tokio::process::Command::new("sysctl")
             .args(&["-w", &format!("{}={}", key, value)])
             .output()
             .await;
     }
-    
+
     tracing::info!("Secure sysctl values applied");
     Ok(())
 }
@@ -69,7 +69,7 @@ pub async fn disable_core_dumps() -> Result<()> {
         .args(&["-w", "kernel.core_pattern=|/bin/false"])
         .output()
         .await?;
-    
+
     Ok(())
 }
 
