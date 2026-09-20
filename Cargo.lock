@@ -1782,6 +1782,7 @@ dependencies = [
  "cron",
  "dirs",
  "futures",
+ "libc",
  "reqwest",
  "ring",
  "rusqlite",

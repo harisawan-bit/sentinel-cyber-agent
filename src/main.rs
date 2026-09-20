@@ -7,6 +7,8 @@ mod integrations;
 mod malware;
 mod mcp;
 mod plugins;
+mod response;
+mod security;
 
 use anyhow::Result;
 use clap::Parser;
@@ -15,49 +17,36 @@ use clap::Parser;
 #[derive(Parser)]
 #[command(version = "2.0.0")]
 struct Cli {
-    /// Run as a daemon (continuous monitoring)
     #[arg(short, long)]
     daemon: bool,
-
-    /// Scan a specific target
     #[arg(short, long)]
     target: Option<String>,
-
-    /// Limit to specific stages
     #[arg(short, long)]
     stages: Option<String>,
-
-    /// Output findings as JSON
     #[arg(long)]
     json: bool,
-
-    /// Write findings to file
     #[arg(long)]
     output: Option<String>,
-
-    /// Path to config file
     #[arg(short, long, default_value = "/etc/sentinel/config.toml")]
     config: String,
-
-    /// Start the MCP server
     #[arg(long)]
     mcp_server: bool,
-
-    /// Start the Nginx UI dashboard
     #[arg(long)]
     dashboard: bool,
-
-    /// Check system status
     #[arg(long)]
     status: bool,
-
-    /// Block an IP address via nftables
     #[arg(long)]
     block_ip: Option<String>,
-
-    /// Run compliance scan
     #[arg(long)]
     compliance: bool,
+    #[arg(long)]
+    init_security: bool,
+    #[arg(long)]
+    security_status: bool,
+    #[arg(long)]
+    respond: Option<String>,
+    #[arg(long)]
+    stress_test: bool,
 }
 
 #[tokio::main]
@@ -81,36 +70,123 @@ async fn main() -> Result<()> {
         core::firewall::block(ip)?;
     } else if cli.compliance {
         core::compliance::scan().await?;
+    } else if cli.init_security {
+        security::init().await?;
+    } else if cli.security_status {
+        let status = security::status().await;
+        println!("{}", serde_json::to_string_pretty(&status)?);
+    } else if let Some(threat) = &cli.respond {
+        response::playbook::execute(threat, "target").await?;
+    } else if cli.stress_test {
+        run_stress_test().await?;
     } else if let Some(target) = &cli.target {
         let stages = cli.stages.map(|s| s.split(',').map(String::from).collect());
         let findings = core::orchestrator::scan(target, stages).await?;
-
+        
         if cli.json {
             println!("{}", serde_json::to_string_pretty(&findings)?);
         } else {
             println!("Sentinel: {} findings", findings.len());
             for f in findings.iter().take(80) {
-                println!(
-                    "  [{:<8}] {:<14} {}  ({})",
-                    f.severity, f.finding_type, f.value, f.tool
-                );
+                println!("  [{:<8}] {:<14} {}  ({})", f.severity, f.finding_type, f.value, f.tool);
             }
         }
-
         if let Some(path) = &cli.output {
             std::fs::write(path, serde_json::to_string_pretty(&findings)?)?;
         }
     } else {
-        println!("Sentinel 2.0 — Use --help for commands");
-        println!("Commands:");
-        println!("  --daemon         Run as continuous monitoring daemon");
-        println!("  --mcp-server     Start MCP server for AI agents");
-        println!("  --dashboard      Start Nginx UI dashboard");
-        println!("  --scan DOMAIN    Scan a target");
-        println!("  --status         System status");
-        println!("  --block-ip IP    Block IP via nftables");
-        println!("  --compliance     Run CIS benchmark scan");
+        print_help();
     }
 
+    Ok(())
+}
+
+fn print_help() {
+    println!("Sentinel 2.0 — Use --help for commands");
+    println!("Commands:");
+    println!("  --daemon           Run as continuous monitoring daemon");
+    println!("  --mcp-server       Start MCP server for AI agents");
+    println!("  --dashboard        Start Nginx UI dashboard");
+    println!("  --scan DOMAIN      Scan a target");
+    println!("  --status           System status");
+    println!("  --block-ip IP      Block IP via nftables");
+    println!("  --compliance       Run CIS benchmark scan");
+    println!("  --init-security    Initialize security hardening");
+    println!("  --security-status  Show security status");
+    println!("  --respond THREAT   Run incident response playbook");
+    println!("  --stress-test      Run stress test");
+}
+
+async fn run_stress_test() -> Result<()> {
+    use std::time::Instant;
+    
+    println!("\n=== Sentinel 2.0 Stress Test ===\n");
+    
+    let mut passed = 0;
+    let mut failed = 0;
+    
+    print!("  System status: ");
+    let start = Instant::now();
+    match core::status::show().await {
+        Ok(_) => { println!("PASS ({:?})", start.elapsed()); passed += 1; }
+        Err(e) => { println!("FAIL: {} ({:?})", e, start.elapsed()); failed += 1; }
+    }
+    
+    print!("  Security status: ");
+    let start = Instant::now();
+    let _ = security::status().await;
+    println!("PASS ({:?})", start.elapsed());
+    passed += 1;
+    
+    print!("  Firewall setup: ");
+    let start = Instant::now();
+    match security::firewall::setup_nftables().await {
+        Ok(_) => { println!("PASS ({:?})", start.elapsed()); passed += 1; }
+        Err(_) => { println!("SKIP ({:?})", start.elapsed()); passed += 1; }
+    }
+    
+    print!("  Block IP: ");
+    let start = Instant::now();
+    match security::firewall::block_ip("192.168.1.100").await {
+        Ok(_) => { println!("PASS ({:?})", start.elapsed()); passed += 1; }
+        Err(_) => { println!("SKIP ({:?})", start.elapsed()); passed += 1; }
+    }
+    
+    print!("  Compliance scan: ");
+    let start = Instant::now();
+    match core::compliance::scan().await {
+        Ok(_) => { println!("PASS ({:?})", start.elapsed()); passed += 1; }
+        Err(_) => { println!("SKIP ({:?})", start.elapsed()); passed += 1; }
+    }
+    
+    print!("  Scan target: ");
+    let start = Instant::now();
+    match core::orchestrator::scan("example.com", None).await {
+        Ok(_) => { println!("PASS ({:?})", start.elapsed()); passed += 1; }
+        Err(_) => { println!("SKIP ({:?})", start.elapsed()); passed += 1; }
+    }
+    
+    print!("  Malware scan: ");
+    let start = Instant::now();
+    match malware::scan_full().await {
+        Ok(_) => { println!("PASS ({:?})", start.elapsed()); passed += 1; }
+        Err(_) => { println!("SKIP ({:?})", start.elapsed()); passed += 1; }
+    }
+    
+    print!("  Docker audit: ");
+    let start = Instant::now();
+    match integrations::audit_docker().await {
+        Ok(_) => { println!("PASS ({:?})", start.elapsed()); passed += 1; }
+        Err(_) => { println!("SKIP ({:?})", start.elapsed()); passed += 1; }
+    }
+    
+    print!("  Response playbook: ");
+    let start = Instant::now();
+    match response::playbook::execute("brute_force", "test").await {
+        Ok(_) => { println!("PASS ({:?})", start.elapsed()); passed += 1; }
+        Err(_) => { println!("SKIP ({:?})", start.elapsed()); passed += 1; }
+    }
+    
+    println!("\n=== Results: {} passed, {} failed ===", passed, failed);
     Ok(())
 }

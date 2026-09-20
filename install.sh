@@ -1,5 +1,6 @@
 #!/bin/bash
-# Sentinel 2.0 — Homelab Security Platform Installer
+# Sentinel 2.0 — Universal Homelab Security Platform Installer
+# Supports: Ubuntu, Debian, Fedora, RHEL, CentOS, Rocky, Alma, Arch, Manjaro, openSUSE, Alpine, Omarchy
 # Usage: curl -fsSL sentinel.security/install.sh | bash
 
 set -euo pipefail
@@ -15,11 +16,13 @@ RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
+CYAN='\033[0;36m'
 NC='\033[0m'
 
 log() { echo -e "${GREEN}[SENTINEL]${NC} $1"; }
 warn() { echo -e "${YELLOW}[WARNING]${NC} $1"; }
 error() { echo -e "${RED}[ERROR]${NC} $1"; }
+info() { echo -e "${CYAN}[INFO]${NC} $1"; }
 
 # Check root
 if [[ $EUID -ne 0 ]]; then
@@ -27,24 +30,225 @@ if [[ $EUID -ne 0 ]]; then
     exit 1
 fi
 
-# Detect OS
+# Detect OS with comprehensive detection
 detect_os() {
     if [[ -f /etc/os-release ]]; then
         . /etc/os-release
         OS=$ID
         VER=$VERSION_ID
+        NAME=$NAME
+        
+        # Detect derived distros
+        if [[ "$ID" == "arch" ]] && [[ -d /opt/omarchy ]]; then
+            DISTRO="omarchy"
+        elif [[ "$ID_LIKE" == *"debian"* ]]; then
+            DISTRO="debian"
+        elif [[ "$ID_LIKE" == *"rhel"* ]] || [[ "$ID_LIKE" == *"fedora"* ]]; then
+            DISTRO="rhel"
+        elif [[ "$ID_LIKE" == *"suse"* ]]; then
+            DISTRO="suse"
+        elif [[ "$ID_LIKE" == *"arch"* ]]; then
+            DISTRO="arch"
+        else
+            DISTRO=$OS
+        fi
     else
         error "Cannot detect OS"
         exit 1
     fi
+    
+    log "Detected: $NAME ($OS $VER)"
 }
 
-# Install dependencies
-install_deps() {
-    log "Installing dependencies..."
+# Detect package manager
+detect_pkg_mgr() {
+    if command -v apt-get &> /dev/null; then
+        PKG_MGR="apt"
+    elif command -v dnf &> /dev/null; then
+        PKG_MGR="dnf"
+    elif command -v pacman &> /dev/null; then
+        PKG_MGR="pacman"
+    elif command -v zypper &> /dev/null; then
+        PKG_MGR="zypper"
+    elif command -v apk &> /dev/null; then
+        PKG_MGR="apk"
+    else
+        error "No supported package manager found"
+        exit 1
+    fi
     
-    case $OS in
-        ubuntu|debian)
+    log "Package manager: $PKG_MGR"
+}
+
+# Detect firewall system
+detect_firewall {
+    if command -v nft &> /dev/null; then
+        FIREWALL="nftables"
+    elif command -v iptables &> /dev/null; then
+        FIREWALL="iptables"
+    elif command -v firewall-cmd &> /dev/null; then
+        FIREWALL="firewalld"
+    elif command -v ufw &> /dev/null; then
+        FIREWALL="ufw"
+    else
+        FIREWALL="none"
+    fi
+    
+    log "Firewall: $FIREWALL"
+}
+
+# Detect init system
+detect_init {
+    if [[ -d /run/systemd/system ]]; then
+        INIT="systemd"
+    elif command -v openrc &> /dev/null; then
+        INIT="openrc"
+    elif command -v s6-svscan &> /dev/null; then
+        INIT="s6"
+    else
+        INIT="unknown"
+    fi
+    
+    log "Init system: $INIT"
+}
+
+# Detect existing homelab tools
+detect_homelab_tools {
+    log "Scanning for existing homelab tools..."
+    
+    declare -gA TOOLS
+    
+    # Docker
+    if command -v docker &> /dev/null; then
+        TOOLS["docker"]="installed"
+        info "  Docker: installed"
+    fi
+    
+    # Docker Compose
+    if command -v docker-compose &> /dev/null || docker compose version &> /dev/null 2>&1; then
+        TOOLS["docker_compose"]="installed"
+        info "  Docker Compose: installed"
+    fi
+    
+    # Portainer
+    if docker ps 2>/dev/null | grep -q portainer; then
+        TOOLS["portainer"]="running"
+        info "  Portainer: running"
+    fi
+    
+    # Traefik
+    if docker ps 2>/dev/null | grep -q traefik; then
+        TOOLS["traefik"]="running"
+        info "  Traefik: running"
+    fi
+    
+    # Nginx Proxy Manager
+    if docker ps 2>/dev/null | grep -q nginx-proxy-manager; then
+        TOOLS["npm"]="running"
+        info "  Nginx Proxy Manager: running"
+    fi
+    
+    # Pi-hole / AdGuard
+    if docker ps 2>/dev/null | grep -q pi-hole; then
+        TOOLS["pihole"]="running"
+        info "  Pi-hole: running"
+    fi
+    if docker ps 2>/dev/null | grep -q adguard; then
+        TOOLS["adguard"]="running"
+        info "  AdGuard Home: running"
+    fi
+    
+    # Home Assistant
+    if docker ps 2>/dev/null | grep -q homeassistant; then
+        TOOLS["homeassistant"]="running"
+        info "  Home Assistant: running"
+    fi
+    
+    # Proxmox
+    if command -v pvesh &> /dev/null; then
+        TOOLS["proxmox"]="installed"
+        info "  Proxmox VE: detected"
+    fi
+    
+    # CrowdSec
+    if command -v crowdsec &> /dev/null; then
+        TOOLS["crowdsec"]="installed"
+        info "  CrowdSec: installed"
+    fi
+    
+    # fail2ban
+    if command -v fail2ban-client &> /dev/null; then
+        TOOLS["fail2ban"]="installed"
+        info "  fail2ban: installed"
+    fi
+    
+    # Grafana
+    if docker ps 2>/dev/null | grep -q grafana; then
+        TOOLS["grafana"]="running"
+        info "  Grafana: running"
+    fi
+    
+    # Uptime Kuma
+    if docker ps 2>/dev/null | grep -q uptime-kuma; then
+        TOOLS["uptime_kuma"]="running"
+        info "  Uptime Kuma: running"
+    fi
+    
+    # Nextcloud
+    if docker ps 2>/dev/null | grep -q nextcloud; then
+        TOOLS["nextcloud"]="running"
+        info "  Nextcloud: running"
+    fi
+    
+    # Jellyfin / Plex
+    if docker ps 2>/dev/null | grep -q jellyfin; then
+        TOOLS["jellyfin"]="running"
+        info "  Jellyfin: running"
+    fi
+    if docker ps 2>/dev/null | grep -q plex; then
+        TOOLS["plex"]="running"
+        info "  Plex: running"
+    fi
+    
+    # Vaultwarden
+    if docker ps 2>/dev/null | grep -q vaultwarden; then
+        TOOLS["vaultwarden"]="running"
+        info "  Vaultwarden: running"
+    fi
+    
+    # WireGuard
+    if command -v wg &> /dev/null; then
+        TOOLS["wireguard"]="installed"
+        info "  WireGuard: installed"
+    fi
+    
+    # *arr stack
+    for tool in sonarr radarr prowlarr lidarr readarr; do
+        if docker ps 2>/dev/null | grep -q $tool; then
+            TOOLS["$tool"]="running"
+            info "  ${tool^}: running"
+        fi
+    done
+    
+    # Syncthing
+    if command -v syncthing &> /dev/null; then
+        TOOLS["syncthing"]="installed"
+        info "  Syncthing: installed"
+    fi
+    
+    # Node-RED
+    if docker ps 2>/dev/null | grep -q node-red; then
+        TOOLS["nodered"]="running"
+        info "  Node-RED: running"
+    fi
+}
+
+# Install dependencies based on distro
+install_deps() {
+    log "Installing dependencies for $OS..."
+    
+    case $PKG_MGR in
+        apt)
             apt-get update -qq
             apt-get install -y -qq \
                 build-essential \
@@ -56,9 +260,13 @@ install_deps() {
                 clamav \
                 clamav-daemon \
                 yara \
+                docker.io \
+                docker-compose-v2 \
+                jq \
+                sqlite3 \
                 2>/dev/null || true
             ;;
-        fedora|rhel|centos)
+        dnf)
             dnf install -y \
                 gcc \
                 gcc-c++ \
@@ -67,11 +275,16 @@ install_deps() {
                 git \
                 nftables \
                 clamav \
+                clamav-update \
                 yara \
+                docker \
+                docker-compose \
+                jq \
+                sqlite \
                 2>/dev/null || true
             ;;
-        arch)
-            pacman -S --noconfirm \
+        pacman)
+            pacman -S --noconfirm --needed \
                 base-devel \
                 openssl \
                 curl \
@@ -79,6 +292,41 @@ install_deps() {
                 nftables \
                 clamav \
                 yara \
+                docker \
+                docker-compose \
+                jq \
+                sqlite \
+                2>/dev/null || true
+            ;;
+        zypper)
+            zypper install -y \
+                gcc \
+                gcc-c++ \
+                libopenssl-devel \
+                curl \
+                git \
+                nftables \
+                clamav \
+                yara \
+                docker \
+                docker-compose \
+                jq \
+                sqlite3 \
+                2>/dev/null || true
+            ;;
+        apk)
+            apk add \
+                build-base \
+                openssl-dev \
+                curl \
+                git \
+                nftables \
+                clamav \
+                yara \
+                docker \
+                docker-compose \
+                jq \
+                sqlite \
                 2>/dev/null || true
             ;;
     esac
@@ -111,7 +359,7 @@ configure_build() {
     enable_malware=${enable_malware:-Y}
     
     # Firewall
-    read -p "Enable nftables firewall integration? [Y/n]: " enable_firewall
+    read -p "Enable firewall integration ($FIREWALL)? [Y/n]: " enable_firewall
     enable_firewall=${enable_firewall:-Y}
     
     # Alerts
@@ -139,6 +387,17 @@ configure_build() {
     read -p "Choose [1]: " install_type
     install_type=${install_type:-1}
     
+    # Homelab integrations
+    echo ""
+    read -p "Enable Proxmox integration? [y/N]: " enable_proxmox
+    enable_proxmox=${enable_proxmox:-N}
+    
+    read -p "Enable Home Assistant integration? [y/N]: " enable_ha
+    enable_ha=${enable_ha:-N}
+    
+    read -p "Enable CrowdSec integration? [y/N]: " enable_crowdsec
+    enable_crowdsec=${enable_crowdsec:-N}
+    
     # Generate config
     generate_config
 }
@@ -149,16 +408,33 @@ generate_config() {
     mkdir -p $CONFIG_DIR
     mkdir -p $DATA_DIR
     
+    # Determine firewall type for config
+    local firewall_type="nftables"
+    case $FIREWALL in
+        nftables) firewall_type="nftables" ;;
+        iptables) firewall_type="iptables" ;;
+        firewalld) firewall_type="firewalld" ;;
+        ufw) firewall_type="ufw" ;;
+        *) firewall_type="none" ;;
+    esac
+    
     cat > $CONFIG_DIR/config.toml << EOF
 # Sentinel 2.0 Configuration
 # Generated on $(date)
+# Distro: $OS $VER ($NAME)
+# Package Manager: $PKG_MGR
+# Firewall: $FIREWALL
+# Init: $INIT
 
 [general]
+os = "$OS"
+distro = "$DISTRO"
 daemon = true
 schedule = "0 */6 * * *"
 jitter_seconds = 300
 data_dir = "$DATA_DIR"
 log_level = "info"
+install_method = "$PKG_MGR"
 
 [dashboard]
 enabled = $([ "$enable_dashboard" = "Y" ] && echo "true" || echo "false")
@@ -185,11 +461,12 @@ daily_scan = "0 2 * * *"
 max_scan_size_mb = 100
 
 [firewall]
+type = "$firewall_type"
 nftables_enabled = $([ "$enable_firewall" = "Y" ] && echo "true" || echo "false")
 auto_block = true
 block_duration = "24h"
 rate_limit_per_minute = 100
-crowdsec_enabled = false
+crowdsec_enabled = $([ "$enable_crowdsec" = "Y" ] && echo "true" || echo "false")
 
 [alerts]
 channels = "$alert_channels"
@@ -234,17 +511,35 @@ server = "https://ntfy.sh"
 
 [integrations]
 docker_enabled = true
+docker_compose_enabled = true
 proxy_enabled = true
-proxmox_enabled = false
+proxmox_enabled = $([ "$enable_proxmox" = "Y" ] && echo "true" || echo "false")
 proxmox_host = ""
 proxmox_user = ""
 proxmox_token = ""
-homeassistant_enabled = false
+homeassistant_enabled = $([ "$enable_ha" = "Y" ] && echo "true" || echo "false")
 homeassistant_url = ""
 homeassistant_token = ""
 dns_filter_enabled = false
 dns_filter_url = ""
 wireguard_enabled = true
+portainer_enabled = false
+traefik_enabled = false
+crowdsec_enabled = $([ "$enable_crowdsec" = "Y" ] && echo "true" || echo "false")
+fail2ban_enabled = false
+grafana_enabled = false
+uptime_kuma_enabled = false
+nextcloud_enabled = false
+vaultwarden_enabled = false
+jellyfin_enabled = false
+syncthing_enabled = false
+
+[integrations.arr_stack]
+sonarr_enabled = false
+radarr_enabled = false
+prowlarr_enabled = false
+lidarr_enabled = false
+readarr_enabled = false
 
 [threat_intel]
 cisa_kev_enabled = true
@@ -256,7 +551,7 @@ abuseipdb_api_key = ""
 
 [compliance]
 cis_enabled = true
-cis_profile = "ubuntu"
+cis_profile = "$DISTRO"
 auto_harden = false
 dry_run = true
 
@@ -283,15 +578,17 @@ EOF
 }
 
 # Build from source
-build_from_source {
-    log "Building Sentinel from source..."
+build_from_source() {
+    log "Building Sentinel from source for $OS..."
     
-    # Clone repo
     cd /tmp
     rm -rf sentinel-cyber-agent
-    git clone --depth 1 https://github.com/harisawan-bit/sentinel-cyber-agent.git
+    git clone --depth 1 https://github.com/harisawan-bit/sentinel-cyber-agent.git 2>/dev/null || {
+        warn "Could not clone repo, using local source"
+        cp -r /home/haris/sentinel-v2 /tmp/sentinel-cyber-agent 2>/dev/null || true
+    }
     
-    cd sentinel-cyber-agent
+    cd sentinel-cyber-agent 2>/dev/null || cd /home/haris/sentinel-v2
     
     # Build release binary
     cargo build --release
@@ -305,27 +602,46 @@ build_from_source {
     cp dashboard/index.html $DASHBOARD_DIR/
     
     # Install config example
-    cp config.example.toml $CONFIG_DIR/config.example.toml
+    cp config.example.toml $CONFIG_DIR/config.example.toml 2>/dev/null || true
 }
 
 # Install pre-compiled binary
-install_binary {
-    log "Downloading pre-compiled binary..."
+install_binary() {
+    log "Downloading pre-compiled binary for $OS..."
     
     # In production, this would download from GitHub releases
     # For now, build from source
     build_from_source
 }
 
+# Setup init system
+setup_init() {
+    case $INIT in
+        systemd)
+            setup_systemd
+            ;;
+        openrc)
+            setup_openrc
+            ;;
+        s6)
+            setup_s6
+            ;;
+        *)
+            warn "Unknown init system, skipping service setup"
+            ;;
+    esac
+}
+
 # Setup systemd
-setup_systemd {
+setup_systemd() {
     log "Setting up systemd service..."
     
     cat > /etc/systemd/system/sentinel.service << 'EOF'
 [Unit]
 Description=Sentinel 2.0 - Homelab Security Platform
 Documentation=https://github.com/harisawan-bit/sentinel-cyber-agent
-After=network.target
+After=network.target docker.service
+Wants=docker.service
 
 [Service]
 Type=simple
@@ -360,8 +676,81 @@ EOF
     systemctl enable sentinel
 }
 
-# Setup nftables
-setup_nftables {
+# Setup OpenRC (Alpine, Gentoo)
+setup_openrc() {
+    log "Setting up OpenRC service..."
+    
+    cat > /etc/init.d/sentinel << 'EOF'
+#!/sbin/openrc-run
+
+name="Sentinel 2.0"
+description="Homelab Security Platform"
+command="/usr/local/bin/sentinel"
+command_args="--daemon --config /etc/sentinel/config.toml"
+command_background=true
+pidfile="/run/sentinel.pid"
+output_log="/var/log/sentinel.log"
+error_log="/var/log/sentinel.err"
+
+depend() {
+    need net
+    after docker
+}
+
+start_pre() {
+    checkpath -f -m 0644 -o root:root /var/log/sentinel.log
+    checkpath -f -m 0644 -o root:root /var/log/sentinel.err
+}
+EOF
+
+    chmod 755 /etc/init.d/sentinel
+    rc-update add sentinel default
+}
+
+# Setup s6 (some minimal distros)
+setup_s6() {
+    log "Setting up s6 service..."
+    
+    mkdir -p /etc/s6/sentinel
+    
+    cat > /etc/s6/sentinel/run << 'EOF'
+#!/bin/execlineb -P
+/usr/local/bin/sentinel --daemon --config /etc/sentinel/config.toml
+EOF
+
+    chmod 755 /etc/s6/sentinel/run
+    
+    # Create finish script
+    cat > /etc/s6/sentinel/finish << 'EOF'
+#!/bin/execlineb -P
+EOF
+
+    chmod 755 /etc/s6/sentinel/finish
+}
+
+# Setup firewall
+setup_firewall() {
+    case $FIREWALL in
+        nftables)
+            setup_nftables
+            ;;
+        iptables)
+            setup_iptables
+            ;;
+        firewalld)
+            setup_firewalld
+            ;;
+        ufw)
+            setup_ufw
+            ;;
+        *)
+            warn "No supported firewall detected"
+            ;;
+    esac
+}
+
+# Setup nftables (Debian, Ubuntu, Arch, modern distros)
+setup_nftables() {
     log "Setting up nftables..."
     
     # Create sentinel table and chain
@@ -369,19 +758,66 @@ setup_nftables {
     nft add chain inet sentinel input { type filter hook input priority 0\; policy accept\; } 2>/dev/null || true
     nft add set inet sentinel blocklist { type ipv4_addr\; flags timeout\; } 2>/dev/null || true
     nft add rule inet sentinel input ip saddr @blocklist counter drop 2>/dev/null || true
+    
+    # Save rules
+    if command -v nft &> /dev/null; then
+        nft list ruleset > /etc/nftables.conf 2>/dev/null || true
+    fi
+}
+
+# Setup iptables (legacy)
+setup_iptables() {
+    log "Setting up iptables..."
+    
+    # Create sentinel chain
+    iptables -N SENTINEL 2>/dev/null || true
+    iptables -A INPUT -j SENTINEL 2>/dev/null || true
+    iptables -A SENTINEL -m set --match-set sentinel-blocklist src -j DROP 2>/dev/null || true
+    
+    # Save rules
+    if command -v iptables-save &> /dev/null; then
+        iptables-save > /etc/iptables/rules.v4 2>/dev/null || \
+        iptables-save > /etc/sysconfig/iptables 2>/dev/null || true
+    fi
+}
+
+# Setup firewalld (RHEL, Fedora, openSUSE)
+setup_firewalld() {
+    log "Setting up firewalld..."
+    
+    # Create sentinel zone
+    firewall-cmd --permanent --new-zone=sentinel 2>/dev/null || true
+    firewall-cmd --permanent --zone=sentinel --add-source=0.0.0.0/0 2>/dev/null || true
+    firewall-cmd --reload 2>/dev/null || true
+}
+
+# Setup ufw (Ubuntu)
+setup_ufw() {
+    log "Setting up ufw..."
+    
+    # ufw is already configured, just add sentinel rules
+    ufw allow 8080/tcp comment "Sentinel Dashboard" 2>/dev/null || true
 }
 
 # Main
-main {
+main() {
     echo ""
     echo -e "${BLUE}╔══════════════════════════════════════════════════════════════╗${NC}"
     echo -e "${BLUE}║           SENTINEL 2.0 — Homelab Security Platform          ║${NC}"
-    echo -e "${BLUE}║                        Installer                            ║${NC}"
+    echo -e "${BLUE}║                   Universal Installer                        ║${NC}"
     echo -e "${BLUE}╚══════════════════════════════════════════════════════════════╝${NC}"
     echo ""
     
     detect_os
-    log "Detected OS: $OS $VER"
+    detect_pkg_mgr
+    detect_firewall
+    detect_init
+    detect_homelab_tools
+    
+    log "Detected OS: $NAME ($OS $VER)"
+    log "Package manager: $PKG_MGR"
+    log "Firewall: $FIREWALL"
+    log "Init system: $INIT"
     
     install_deps
     install_rust
@@ -393,8 +829,8 @@ main {
         build_from_source
     fi
     
-    setup_systemd
-    setup_nftables
+    setup_init
+    setup_firewall
     
     echo ""
     log "Installation complete!"
@@ -405,12 +841,29 @@ main {
     echo "  sentinel --mcp-server      Start MCP server for AI agents"
     echo "  sentinel --scan DOMAIN     Scan a target"
     echo "  sentinel --compliance      Run CIS benchmark scan"
-    echo "  sentinel --block-ip IP     Block an IP via nftables"
+    echo "  sentinel --block-ip IP     Block an IP"
     echo ""
-    echo "Systemd:"
-    echo "  systemctl start sentinel   Start the daemon"
-    echo "  systemctl stop sentinel    Stop the daemon"
-    echo "  journalctl -u sentinel -f  View logs"
+    
+    case $INIT in
+        systemd)
+            echo "Systemd:"
+            echo "  systemctl start sentinel   Start the daemon"
+            echo "  systemctl stop sentinel    Stop the daemon"
+            echo "  journalctl -u sentinel -f  View logs"
+            ;;
+        openrc)
+            echo "OpenRC:"
+            echo "  rc-service sentinel start   Start the daemon"
+            echo "  rc-service sentinel stop    Stop the daemon"
+            echo "  rc-update add sentinel      Enable at boot"
+            ;;
+        s6)
+            echo "s6:"
+            echo "  s6-svc -u /etc/s6/sentinel  Start the daemon"
+            echo "  s6-svc -d /etc/s6/sentinel  Stop the daemon"
+            ;;
+    esac
+    
     echo ""
     echo "Dashboard: http://localhost:$dashboard_port"
     echo "Config: $CONFIG_DIR/config.toml"
