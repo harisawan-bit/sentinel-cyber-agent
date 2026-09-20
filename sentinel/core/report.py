@@ -1,7 +1,6 @@
 """Autonomous HTML report generation — executive charcoal, warm brown, and silver aesthetic.
 
-Builds a self-contained, agency-grade HTML report from a list of finding dictionaries:
-severity heatmap, proportional distribution bar, findings grouped by target,
+Features a dedicated Open Ports & Services Matrix, proportional severity spectrum bar,
 curved panels, silver accents, and zero external runtime dependencies.
 """
 from __future__ import annotations
@@ -24,14 +23,18 @@ def _esc(s) -> str:
     return html.escape(str(s if s is not None else ""))
 
 
-def render(findings: List[Dict[str, Any]], title: str = "Sentinel Report") -> str:
+def render(findings: List[Dict[str, Any]], title: str = "Sentinel Homelab Report") -> str:
     sev_counts = Counter(f.get("severity", "info") for f in findings)
     total = len(findings)
     by_target = defaultdict(list)
+    port_findings: List[Dict[str, Any]] = []
+
     for f in findings:
         by_target[f.get("target", "?")].append(f)
+        if f.get("finding_type") == "port":
+            port_findings.append(f)
 
-    # Build proportional segmented distribution bar
+    # Proportional segmented distribution bar
     bar_segments = ""
     if total > 0:
         for s in SEV_ORDER:
@@ -45,7 +48,59 @@ def render(findings: List[Dict[str, Any]], title: str = "Sentinel Report") -> st
     else:
         bar_segments = '<div class="dist-seg" style="width:100%; background:var(--border);" title="No findings"></div>'
 
-    # Build target cards
+    # Dedicated Open Ports Matrix Section
+    ports_section = ""
+    if port_findings:
+        port_rows = ""
+        for pf in port_findings:
+            sev = str(pf.get("severity", "info")).lower()
+            color = SEV_COLORS.get(sev, "#8a93a6")
+            meta = pf.get("metadata") or {}
+            svc = meta.get("service", pf.get("detail", "Unknown"))
+            cat = meta.get("category", "General")
+            port_rows += (
+                f'<tr class="port-row" data-sev="{_esc(sev)}" data-cat="{_esc(cat.lower())}">'
+                f'<td><span class="val-mono">{_esc(pf.get("target", ""))}</span></td>'
+                f'<td><span class="port-badge">{_esc(pf.get("value", ""))}</span></td>'
+                f'<td><span class="service-name">{_esc(svc)}</span></td>'
+                f'<td><span class="cat-pill">{_esc(cat)}</span></td>'
+                f'<td><span class="sev" style="background:{color}">{_esc(sev)}</span></td>'
+                f'<td class="dim">{_esc(pf.get("detail", ""))}</td>'
+                f'</tr>'
+            )
+
+        ports_section = f"""
+        <section class="card ports-card" aria-label="Homelab Open Ports and Services Matrix">
+          <div class="card-h">
+            <div class="card-h-title">
+              <h2>🔌 Open Ports &amp; Services Matrix</h2>
+              <span class="badge-subtle">{len(port_findings)} port(s) open</span>
+            </div>
+            <div class="port-filters">
+              <button class="port-btn active" onclick="filterPorts('all', this)">All Ports</button>
+              <button class="port-btn" onclick="filterPorts('high-crit', this)">High Risk Only</button>
+              <button class="port-btn" onclick="filterPorts('containers', this)">Containers</button>
+              <button class="port-btn" onclick="filterPorts('database', this)">Databases</button>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table id="portsTable">
+              <thead>
+                <tr>
+                  <th style="width: 140px;">Host / IP</th>
+                  <th style="width: 110px;">Port</th>
+                  <th style="width: 180px;">Service</th>
+                  <th style="width: 120px;">Category</th>
+                  <th style="width: 90px;">Risk</th>
+                  <th>Observation &amp; Detail</th>
+                </tr>
+              </thead>
+              <tbody>{port_rows}</tbody>
+            </table>
+          </div>
+        </section>"""
+
+    # Target Cards
     cards = ""
     for target, fs in sorted(by_target.items()):
         tcount = Counter(f.get("severity", "info") for f in fs)
@@ -137,11 +192,7 @@ def render(findings: List[Dict[str, Any]], title: str = "Sentinel Report") -> st
     --space-xxl: 48px;
   }}
 
-  * {{
-    box-sizing: border-box;
-    margin: 0;
-    padding: 0;
-  }}
+  * {{ box-sizing: border-box; margin: 0; padding: 0; }}
 
   body {{
     background-color: var(--bg);
@@ -154,10 +205,7 @@ def render(findings: List[Dict[str, Any]], title: str = "Sentinel Report") -> st
   }}
 
   @media (prefers-reduced-motion: reduce) {{
-    * {{
-      animation-duration: 0.01ms !important;
-      transition-duration: 0.01ms !important;
-    }}
+    * {{ animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }}
   }}
 
   /* Header */
@@ -183,11 +231,7 @@ def render(findings: List[Dict[str, Any]], title: str = "Sentinel Report") -> st
     gap: var(--space-md);
   }}
 
-  .brand-group {{
-    display: flex;
-    align-items: center;
-    gap: var(--space-md);
-  }}
+  .brand-group {{ display: flex; align-items: center; gap: var(--space-md); }}
 
   .brand-badge {{
     font-family: var(--font-mono);
@@ -199,7 +243,6 @@ def render(findings: List[Dict[str, Any]], title: str = "Sentinel Report") -> st
     border: 1px solid var(--border-strong);
     padding: 4px 10px;
     border-radius: var(--pill-radius);
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
   }}
 
   h1 {{
@@ -219,9 +262,7 @@ def render(findings: List[Dict[str, Any]], title: str = "Sentinel Report") -> st
     align-items: center;
   }}
 
-  .header-subtitle strong {{
-    color: var(--text-primary);
-  }}
+  .header-subtitle strong {{ color: var(--text-primary); }}
 
   /* Main Container */
   main.wrap {{
@@ -233,7 +274,7 @@ def render(findings: List[Dict[str, Any]], title: str = "Sentinel Report") -> st
     gap: var(--space-lg);
   }}
 
-  /* Progress & Severity Distribution Card */
+  /* Progress & Severity Distribution */
   .progress-card {{
     background: var(--surface);
     border: 1px solid var(--border);
@@ -267,10 +308,7 @@ def render(findings: List[Dict[str, Any]], title: str = "Sentinel Report") -> st
     color: var(--text-primary);
   }}
 
-  .progress-stats span {{
-    color: var(--silver);
-    font-weight: 700;
-  }}
+  .progress-stats span {{ color: var(--silver); font-weight: 700; }}
 
   .progress-bar-bg {{
     width: 100%;
@@ -282,12 +320,9 @@ def render(findings: List[Dict[str, Any]], title: str = "Sentinel Report") -> st
     display: flex;
   }}
 
-  .dist-seg {{
-    height: 100%;
-    transition: width 0.3s ease;
-  }}
+  .dist-seg {{ height: 100%; transition: width 0.3s ease; }}
 
-  /* Interactive Controls Bar */
+  /* Controls Bar */
   .controls-bar {{
     display: flex;
     justify-content: space-between;
@@ -300,12 +335,7 @@ def render(findings: List[Dict[str, Any]], title: str = "Sentinel Report") -> st
     border-radius: var(--card-radius);
   }}
 
-  .filter-group {{
-    display: flex;
-    gap: var(--space-sm);
-    align-items: center;
-    flex-wrap: wrap;
-  }}
+  .filter-group {{ display: flex; gap: var(--space-sm); align-items: center; flex-wrap: wrap; }}
 
   .filter-label {{
     font-family: var(--font-mono);
@@ -322,26 +352,14 @@ def render(findings: List[Dict[str, Any]], title: str = "Sentinel Report") -> st
     padding: 3px 10px;
     border-radius: var(--pill-radius);
     font-size: 11px;
-    letter-spacing: 0.02em;
     border: 1px solid transparent;
     cursor: pointer;
     transition: all 0.15s ease;
   }}
 
-  .pill:hover {{
-    opacity: 0.9;
-    transform: translateY(-1px);
-  }}
-
-  .pill.active {{
-    outline: 2px solid var(--silver);
-    box-shadow: 0 0 8px var(--silver-glow);
-  }}
-
-  .pill-all {{
-    background: var(--silver);
-    color: #0e0e0e;
-  }}
+  .pill:hover {{ opacity: 0.9; transform: translateY(-1px); }}
+  .pill.active {{ outline: 2px solid var(--silver); box-shadow: 0 0 8px var(--silver-glow); }}
+  .pill-all {{ background: var(--silver); color: #0e0e0e; }}
 
   .search-input {{
     background: var(--surface-raised);
@@ -361,13 +379,7 @@ def render(findings: List[Dict[str, Any]], title: str = "Sentinel Report") -> st
     box-shadow: 0 0 0 2px var(--silver-glow);
   }}
 
-  /* Target Cards */
-  .target-container {{
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-lg);
-  }}
-
+  /* Cards & Ports Panel */
   .card {{
     background: var(--surface);
     border: 1px solid var(--border);
@@ -377,9 +389,7 @@ def render(findings: List[Dict[str, Any]], title: str = "Sentinel Report") -> st
     transition: border-color 0.2s ease;
   }}
 
-  .card:hover {{
-    border-color: var(--border-strong);
-  }}
+  .card:hover {{ border-color: var(--border-strong); }}
 
   .card-h {{
     display: flex;
@@ -388,13 +398,11 @@ def render(findings: List[Dict[str, Any]], title: str = "Sentinel Report") -> st
     padding: var(--space-md) var(--space-lg);
     border-bottom: 1px solid var(--border);
     background: linear-gradient(90deg, var(--surface) 0%, var(--surface-raised) 100%);
-  }}
-
-  .card-h-title {{
-    display: flex;
-    align-items: baseline;
+    flex-wrap: wrap;
     gap: var(--space-sm);
   }}
+
+  .card-h-title {{ display: flex; align-items: baseline; gap: var(--space-sm); }}
 
   .card-h h2 {{
     font-family: var(--font-serif);
@@ -413,22 +421,58 @@ def render(findings: List[Dict[str, Any]], title: str = "Sentinel Report") -> st
     border-radius: 4px;
   }}
 
-  .pills {{
-    display: flex;
-    gap: var(--space-xs);
-    flex-wrap: wrap;
+  .pills {{ display: flex; gap: var(--space-xs); flex-wrap: wrap; }}
+
+  /* Ports Specific */
+  .port-filters {{ display: flex; gap: 6px; flex-wrap: wrap; }}
+  .port-btn {{
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    padding: 3px 9px;
+    border-radius: var(--pill-radius);
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }}
+  .port-btn:hover {{ background: var(--surface-hover); color: var(--text-primary); }}
+  .port-btn.active {{
+    background: var(--accent-subtle);
+    border-color: var(--accent);
+    color: var(--text-primary);
+    font-weight: 600;
+  }}
+
+  .port-badge {{
+    font-family: var(--font-mono);
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--silver);
+    background: var(--surface-raised);
+    border: 1px solid var(--border-strong);
+    padding: 2px 7px;
+    border-radius: 4px;
+    display: inline-block;
+  }}
+
+  .service-name {{ font-weight: 500; color: var(--text-primary); }}
+
+  .cat-pill {{
+    font-family: var(--font-mono);
+    font-size: 10px;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    background: var(--surface-raised);
+    padding: 2px 6px;
+    border-radius: 3px;
+    border: 1px solid var(--border);
   }}
 
   /* Table */
-  .table-wrap {{
-    overflow-x: auto;
-  }}
+  .table-wrap {{ overflow-x: auto; }}
 
-  table {{
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 13px;
-  }}
+  table {{ width: 100%; border-collapse: collapse; font-size: 13px; }}
 
   th, td {{
     text-align: left;
@@ -448,13 +492,8 @@ def render(findings: List[Dict[str, Any]], title: str = "Sentinel Report") -> st
     border-bottom: 1px solid var(--border-strong);
   }}
 
-  tr:last-child td {{
-    border-bottom: none;
-  }}
-
-  tr:hover td {{
-    background: var(--surface-hover);
-  }}
+  tr:last-child td {{ border-bottom: none; }}
+  tr:hover td {{ background: var(--surface-hover); }}
 
   .sev {{
     color: #0e0e0e;
@@ -479,23 +518,9 @@ def render(findings: List[Dict[str, Any]], title: str = "Sentinel Report") -> st
     display: inline-block;
   }}
 
-  .type-tag {{
-    font-family: var(--font-mono);
-    font-size: 12px;
-    color: var(--text-secondary);
-  }}
-
-  .val-mono {{
-    font-family: var(--font-mono);
-    font-size: 12px;
-    color: var(--text-primary);
-    word-break: break-all;
-  }}
-
-  td.dim {{
-    color: var(--text-secondary);
-    font-size: 12px;
-  }}
+  .type-tag {{ font-family: var(--font-mono); font-size: 12px; color: var(--text-secondary); }}
+  .val-mono {{ font-family: var(--font-mono); font-size: 12px; color: var(--text-primary); word-break: break-all; }}
+  td.dim {{ color: var(--text-secondary); font-size: 12px; }}
 
   /* Footer */
   footer {{
@@ -513,10 +538,12 @@ def render(findings: List[Dict[str, Any]], title: str = "Sentinel Report") -> st
       <div class="brand-row">
         <div class="brand-group">
           <h1>SENTINEL // {_esc(title)}</h1>
-          <span class="brand-badge">MIT Orchestrator</span>
+          <span class="brand-badge">Homelab Guardian</span>
         </div>
         <div class="header-subtitle">
-          <span>Total findings: <strong>{total}</strong></span>
+          <span>Total events: <strong>{total}</strong></span>
+          <span>&bull;</span>
+          <span>Open ports: <strong>{len(port_findings)}</strong></span>
           <span>&bull;</span>
           <span>Target(s): <strong>{len(by_target)}</strong></span>
         </div>
@@ -530,13 +557,16 @@ def render(findings: List[Dict[str, Any]], title: str = "Sentinel Report") -> st
       <div class="progress-card-top">
         <div class="progress-title">Severity Spectrum</div>
         <div class="progress-stats">
-          <span>{total}</span> total validated event(s)
+          <span>{total}</span> validated item(s) across systems
         </div>
       </div>
       <div class="progress-bar-bg">
         {bar_segments}
       </div>
     </section>
+
+    <!-- Dedicated Open Ports Matrix -->
+    {ports_section}
 
     <!-- Interactive Filters & Search -->
     <section class="controls-bar" aria-label="Report Controls">
@@ -546,7 +576,7 @@ def render(findings: List[Dict[str, Any]], title: str = "Sentinel Report") -> st
         {summary_pills}
       </div>
       <div>
-        <input type="text" id="searchInput" class="search-input" placeholder="Search host, tool, CVE..." oninput="handleSearch()">
+        <input type="text" id="searchInput" class="search-input" placeholder="Search host, tool, port, CVE..." oninput="handleSearch()">
       </div>
     </section>
 
@@ -556,7 +586,7 @@ def render(findings: List[Dict[str, Any]], title: str = "Sentinel Report") -> st
     </section>
 
     <footer>
-      Autonomous assessment generated by Sentinel Cyber Agent &bull; Zero external CDN dependencies
+      Autonomous assessment generated by Sentinel Cyber Agent &bull; Low-memory engine &bull; Zero external CDN dependencies
     </footer>
   </main>
 
@@ -572,13 +602,34 @@ def render(findings: List[Dict[str, Any]], title: str = "Sentinel Report") -> st
       }});
     }});
 
+    function filterPorts(category, btn) {{
+      document.querySelectorAll('.port-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      const rows = document.querySelectorAll('.port-row');
+
+      rows.forEach(r => {{
+        const sev = r.getAttribute('data-sev') || '';
+        const cat = r.getAttribute('data-cat') || '';
+
+        if (category === 'all') {{
+          r.style.display = '';
+        }} else if (category === 'high-crit') {{
+          r.style.display = (sev === 'critical' || sev === 'high') ? '' : 'none';
+        }} else if (category === 'containers') {{
+          r.style.display = (cat.includes('container') || cat.includes('docker')) ? '' : 'none';
+        }} else if (category === 'database') {{
+          r.style.display = (cat.includes('database') || cat.includes('storage')) ? '' : 'none';
+        }}
+      }});
+    }}
+
     function handleSearch() {{
       applyFilters();
     }}
 
     function applyFilters() {{
       const query = (document.getElementById('searchInput').value || '').toLowerCase().trim();
-      const cards = document.querySelectorAll('.card');
+      const cards = document.querySelectorAll('.card:not(.ports-card)');
 
       cards.forEach(card => {{
         const rows = card.querySelectorAll('tbody tr');

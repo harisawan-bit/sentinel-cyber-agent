@@ -33,3 +33,4 @@ jobs:
       - name: Run unit tests
         run: |
           python tests/test_core.py
+          python tests/test_homelab.py

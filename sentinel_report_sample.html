@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>SENTINEL // Production Assessment Report</title>
+<title>SENTINEL // Homelab Audit Report</title>
 <style>
   :root {
     --bg: #0e0e0e;
@@ -36,11 +36,7 @@
     --space-xxl: 48px;
   }
 
-  * {
-    box-sizing: border-box;
-    margin: 0;
-    padding: 0;
-  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
 
   body {
     background-color: var(--bg);
@@ -53,10 +49,7 @@
   }
 
   @media (prefers-reduced-motion: reduce) {
-    * {
-      animation-duration: 0.01ms !important;
-      transition-duration: 0.01ms !important;
-    }
+    * { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
   }
 
   /* Header */
@@ -82,11 +75,7 @@
     gap: var(--space-md);
   }
 
-  .brand-group {
-    display: flex;
-    align-items: center;
-    gap: var(--space-md);
-  }
+  .brand-group { display: flex; align-items: center; gap: var(--space-md); }
 
   .brand-badge {
     font-family: var(--font-mono);
@@ -98,7 +87,6 @@
     border: 1px solid var(--border-strong);
     padding: 4px 10px;
     border-radius: var(--pill-radius);
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
   }
 
   h1 {
@@ -118,9 +106,7 @@
     align-items: center;
   }
 
-  .header-subtitle strong {
-    color: var(--text-primary);
-  }
+  .header-subtitle strong { color: var(--text-primary); }
 
   /* Main Container */
   main.wrap {
@@ -132,7 +118,7 @@
     gap: var(--space-lg);
   }
 
-  /* Progress & Severity Distribution Card */
+  /* Progress & Severity Distribution */
   .progress-card {
     background: var(--surface);
     border: 1px solid var(--border);
@@ -166,10 +152,7 @@
     color: var(--text-primary);
   }
 
-  .progress-stats span {
-    color: var(--silver);
-    font-weight: 700;
-  }
+  .progress-stats span { color: var(--silver); font-weight: 700; }
 
   .progress-bar-bg {
     width: 100%;
@@ -181,12 +164,9 @@
     display: flex;
   }
 
-  .dist-seg {
-    height: 100%;
-    transition: width 0.3s ease;
-  }
+  .dist-seg { height: 100%; transition: width 0.3s ease; }
 
-  /* Interactive Controls Bar */
+  /* Controls Bar */
   .controls-bar {
     display: flex;
     justify-content: space-between;
@@ -199,12 +179,7 @@
     border-radius: var(--card-radius);
   }
 
-  .filter-group {
-    display: flex;
-    gap: var(--space-sm);
-    align-items: center;
-    flex-wrap: wrap;
-  }
+  .filter-group { display: flex; gap: var(--space-sm); align-items: center; flex-wrap: wrap; }
 
   .filter-label {
     font-family: var(--font-mono);
@@ -221,26 +196,14 @@
     padding: 3px 10px;
     border-radius: var(--pill-radius);
     font-size: 11px;
-    letter-spacing: 0.02em;
     border: 1px solid transparent;
     cursor: pointer;
     transition: all 0.15s ease;
   }
 
-  .pill:hover {
-    opacity: 0.9;
-    transform: translateY(-1px);
-  }
-
-  .pill.active {
-    outline: 2px solid var(--silver);
-    box-shadow: 0 0 8px var(--silver-glow);
-  }
-
-  .pill-all {
-    background: var(--silver);
-    color: #0e0e0e;
-  }
+  .pill:hover { opacity: 0.9; transform: translateY(-1px); }
+  .pill.active { outline: 2px solid var(--silver); box-shadow: 0 0 8px var(--silver-glow); }
+  .pill-all { background: var(--silver); color: #0e0e0e; }
 
   .search-input {
     background: var(--surface-raised);
@@ -260,13 +223,7 @@
     box-shadow: 0 0 0 2px var(--silver-glow);
   }
 
-  /* Target Cards */
-  .target-container {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-lg);
-  }
-
+  /* Cards & Ports Panel */
   .card {
     background: var(--surface);
     border: 1px solid var(--border);
@@ -276,9 +233,7 @@
     transition: border-color 0.2s ease;
   }
 
-  .card:hover {
-    border-color: var(--border-strong);
-  }
+  .card:hover { border-color: var(--border-strong); }
 
   .card-h {
     display: flex;
@@ -287,13 +242,11 @@
     padding: var(--space-md) var(--space-lg);
     border-bottom: 1px solid var(--border);
     background: linear-gradient(90deg, var(--surface) 0%, var(--surface-raised) 100%);
-  }
-
-  .card-h-title {
-    display: flex;
-    align-items: baseline;
+    flex-wrap: wrap;
     gap: var(--space-sm);
   }
+
+  .card-h-title { display: flex; align-items: baseline; gap: var(--space-sm); }
 
   .card-h h2 {
     font-family: var(--font-serif);
@@ -312,22 +265,58 @@
     border-radius: 4px;
   }
 
-  .pills {
-    display: flex;
-    gap: var(--space-xs);
-    flex-wrap: wrap;
+  .pills { display: flex; gap: var(--space-xs); flex-wrap: wrap; }
+
+  /* Ports Specific */
+  .port-filters { display: flex; gap: 6px; flex-wrap: wrap; }
+  .port-btn {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    padding: 3px 9px;
+    border-radius: var(--pill-radius);
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+  .port-btn:hover { background: var(--surface-hover); color: var(--text-primary); }
+  .port-btn.active {
+    background: var(--accent-subtle);
+    border-color: var(--accent);
+    color: var(--text-primary);
+    font-weight: 600;
+  }
+
+  .port-badge {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--silver);
+    background: var(--surface-raised);
+    border: 1px solid var(--border-strong);
+    padding: 2px 7px;
+    border-radius: 4px;
+    display: inline-block;
+  }
+
+  .service-name { font-weight: 500; color: var(--text-primary); }
+
+  .cat-pill {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    background: var(--surface-raised);
+    padding: 2px 6px;
+    border-radius: 3px;
+    border: 1px solid var(--border);
   }
 
   /* Table */
-  .table-wrap {
-    overflow-x: auto;
-  }
+  .table-wrap { overflow-x: auto; }
 
-  table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 13px;
-  }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
 
   th, td {
     text-align: left;
@@ -347,13 +336,8 @@
     border-bottom: 1px solid var(--border-strong);
   }
 
-  tr:last-child td {
-    border-bottom: none;
-  }
-
-  tr:hover td {
-    background: var(--surface-hover);
-  }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: var(--surface-hover); }
 
   .sev {
     color: #0e0e0e;
@@ -378,23 +362,9 @@
     display: inline-block;
   }
 
-  .type-tag {
-    font-family: var(--font-mono);
-    font-size: 12px;
-    color: var(--text-secondary);
-  }
-
-  .val-mono {
-    font-family: var(--font-mono);
-    font-size: 12px;
-    color: var(--text-primary);
-    word-break: break-all;
-  }
-
-  td.dim {
-    color: var(--text-secondary);
-    font-size: 12px;
-  }
+  .type-tag { font-family: var(--font-mono); font-size: 12px; color: var(--text-secondary); }
+  .val-mono { font-family: var(--font-mono); font-size: 12px; color: var(--text-primary); word-break: break-all; }
+  td.dim { color: var(--text-secondary); font-size: 12px; }
 
   /* Footer */
   footer {
@@ -411,11 +381,13 @@
     <div class="header-container">
       <div class="brand-row">
         <div class="brand-group">
-          <h1>SENTINEL // Production Assessment Report</h1>
-          <span class="brand-badge">MIT Orchestrator</span>
+          <h1>SENTINEL // Homelab Audit Report</h1>
+          <span class="brand-badge">Homelab Guardian</span>
         </div>
         <div class="header-subtitle">
-          <span>Total findings: <strong>17</strong></span>
+          <span>Total events: <strong>13</strong></span>
+          <span>&bull;</span>
+          <span>Open ports: <strong>11</strong></span>
           <span>&bull;</span>
           <span>Target(s): <strong>3</strong></span>
         </div>
@@ -429,36 +401,68 @@
       <div class="progress-card-top">
         <div class="progress-title">Severity Spectrum</div>
         <div class="progress-stats">
-          <span>17</span> total validated event(s)
+          <span>13</span> validated item(s) across systems
         </div>
       </div>
       <div class="progress-bar-bg">
-        <div class="dist-seg" style="width:5.9%; background:#ff3b5c;" title="CRITICAL: 1 (5.9%)"></div><div class="dist-seg" style="width:17.6%; background:#ff7a45;" title="HIGH: 3 (17.6%)"></div><div class="dist-seg" style="width:23.5%; background:#d4a359;" title="MEDIUM: 4 (23.5%)"></div><div class="dist-seg" style="width:29.4%; background:#7a9ebb;" title="LOW: 5 (29.4%)"></div><div class="dist-seg" style="width:23.5%; background:#8a93a6;" title="INFO: 4 (23.5%)"></div>
+        <div class="dist-seg" style="width:7.7%; background:#ff3b5c;" title="CRITICAL: 1 (7.7%)"></div><div class="dist-seg" style="width:23.1%; background:#ff7a45;" title="HIGH: 3 (23.1%)"></div><div class="dist-seg" style="width:38.5%; background:#d4a359;" title="MEDIUM: 5 (38.5%)"></div><div class="dist-seg" style="width:30.8%; background:#8a93a6;" title="INFO: 4 (30.8%)"></div>
       </div>
     </section>
+
+    <!-- Dedicated Open Ports Matrix -->
+    
+        <section class="card ports-card" aria-label="Homelab Open Ports and Services Matrix">
+          <div class="card-h">
+            <div class="card-h-title">
+              <h2>🔌 Open Ports &amp; Services Matrix</h2>
+              <span class="badge-subtle">11 port(s) open</span>
+            </div>
+            <div class="port-filters">
+              <button class="port-btn active" onclick="filterPorts('all', this)">All Ports</button>
+              <button class="port-btn" onclick="filterPorts('high-crit', this)">High Risk Only</button>
+              <button class="port-btn" onclick="filterPorts('containers', this)">Containers</button>
+              <button class="port-btn" onclick="filterPorts('database', this)">Databases</button>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table id="portsTable">
+              <thead>
+                <tr>
+                  <th style="width: 140px;">Host / IP</th>
+                  <th style="width: 110px;">Port</th>
+                  <th style="width: 180px;">Service</th>
+                  <th style="width: 120px;">Category</th>
+                  <th style="width: 90px;">Risk</th>
+                  <th>Observation &amp; Detail</th>
+                </tr>
+              </thead>
+              <tbody><tr class="port-row" data-sev="critical" data-cat="containers"><td><span class="val-mono">192.168.1.50</span></td><td><span class="port-badge">2375/tcp</span></td><td><span class="service-name">Docker Daemon</span></td><td><span class="cat-pill">Containers</span></td><td><span class="sev" style="background:#ff3b5c">critical</span></td><td class="dim">Docker Daemon (Raw TCP) — Unencrypted remote API access detected</td></tr><tr class="port-row" data-sev="high" data-cat="database"><td><span class="val-mono">192.168.1.50</span></td><td><span class="port-badge">6379/tcp</span></td><td><span class="service-name">Redis DB</span></td><td><span class="cat-pill">Database</span></td><td><span class="sev" style="background:#ff7a45">high</span></td><td class="dim">Redis DB — In-memory store listening without auth</td></tr><tr class="port-row" data-sev="medium" data-cat="hypervisor"><td><span class="val-mono">192.168.1.50</span></td><td><span class="port-badge">8006/tcp</span></td><td><span class="service-name">Proxmox VE Console</span></td><td><span class="cat-pill">Hypervisor</span></td><td><span class="sev" style="background:#d4a359">medium</span></td><td class="dim">Proxmox VE Console — Hypervisor management interface active</td></tr><tr class="port-row" data-sev="medium" data-cat="containers"><td><span class="val-mono">192.168.1.50</span></td><td><span class="port-badge">9443/tcp</span></td><td><span class="service-name">Portainer HTTPS</span></td><td><span class="cat-pill">Containers</span></td><td><span class="sev" style="background:#d4a359">medium</span></td><td class="dim">Portainer HTTPS — Docker management UI</td></tr><tr class="port-row" data-sev="medium" data-cat="automation"><td><span class="val-mono">192.168.1.50</span></td><td><span class="port-badge">8123/tcp</span></td><td><span class="service-name">Home Assistant</span></td><td><span class="cat-pill">Automation</span></td><td><span class="sev" style="background:#d4a359">medium</span></td><td class="dim">Home Assistant — Local smart home orchestrator</td></tr><tr class="port-row" data-sev="info" data-cat="remote access"><td><span class="val-mono">192.168.1.50</span></td><td><span class="port-badge">22/tcp</span></td><td><span class="service-name">SSH</span></td><td><span class="cat-pill">Remote Access</span></td><td><span class="sev" style="background:#8a93a6">info</span></td><td class="dim">SSH OpenSSH 9.6 — Public key authentication enforced</td></tr><tr class="port-row" data-sev="info" data-cat="network"><td><span class="val-mono">192.168.1.1</span></td><td><span class="port-badge">53/tcp</span></td><td><span class="service-name">DNS (Pi-hole/Unbound)</span></td><td><span class="cat-pill">Network</span></td><td><span class="sev" style="background:#8a93a6">info</span></td><td class="dim">DNS (Pi-hole / Unbound resolver)</td></tr><tr class="port-row" data-sev="info" data-cat="network"><td><span class="val-mono">192.168.1.1</span></td><td><span class="port-badge">443/tcp</span></td><td><span class="service-name">HTTPS Web</span></td><td><span class="cat-pill">Network</span></td><td><span class="sev" style="background:#8a93a6">info</span></td><td class="dim">HTTPS Router Management UI</td></tr><tr class="port-row" data-sev="medium" data-cat="storage"><td><span class="val-mono">192.168.1.100</span></td><td><span class="port-badge">445/tcp</span></td><td><span class="service-name">SMB File Sharing</span></td><td><span class="cat-pill">Storage</span></td><td><span class="sev" style="background:#d4a359">medium</span></td><td class="dim">SMB File Sharing — Samba dialect 3.1.1</td></tr><tr class="port-row" data-sev="medium" data-cat="storage"><td><span class="val-mono">192.168.1.100</span></td><td><span class="port-badge">2049/tcp</span></td><td><span class="service-name">NFS Storage</span></td><td><span class="cat-pill">Storage</span></td><td><span class="sev" style="background:#d4a359">medium</span></td><td class="dim">NFS Storage — Network File System mount daemon</td></tr><tr class="port-row" data-sev="info" data-cat="media"><td><span class="val-mono">192.168.1.100</span></td><td><span class="port-badge">32400/tcp</span></td><td><span class="service-name">Plex Media Server</span></td><td><span class="cat-pill">Media</span></td><td><span class="sev" style="background:#8a93a6">info</span></td><td class="dim">Plex Media Server — Streaming server operational</td></tr></tbody>
+            </table>
+          </div>
+        </section>
 
     <!-- Interactive Filters & Search -->
     <section class="controls-bar" aria-label="Report Controls">
       <div class="filter-group">
         <span class="filter-label">Filter:</span>
-        <button class="filter-btn pill pill-all active" data-filter="all">ALL: 17</button>
-        <button class="filter-btn pill" data-filter="critical" style="background:#ff3b5c">critical: 1</button><button class="filter-btn pill" data-filter="high" style="background:#ff7a45">high: 3</button><button class="filter-btn pill" data-filter="medium" style="background:#d4a359">medium: 4</button><button class="filter-btn pill" data-filter="low" style="background:#7a9ebb">low: 5</button><button class="filter-btn pill" data-filter="info" style="background:#8a93a6">info: 4</button>
+        <button class="filter-btn pill pill-all active" data-filter="all">ALL: 13</button>
+        <button class="filter-btn pill" data-filter="critical" style="background:#ff3b5c">critical: 1</button><button class="filter-btn pill" data-filter="high" style="background:#ff7a45">high: 3</button><button class="filter-btn pill" data-filter="medium" style="background:#d4a359">medium: 5</button><button class="filter-btn pill" data-filter="info" style="background:#8a93a6">info: 4</button>
       </div>
       <div>
-        <input type="text" id="searchInput" class="search-input" placeholder="Search host, tool, CVE..." oninput="handleSearch()">
+        <input type="text" id="searchInput" class="search-input" placeholder="Search host, tool, port, CVE..." oninput="handleSearch()">
       </div>
     </section>
 
     <!-- Target Cards -->
     <section class="target-container" id="targetContainer">
       
-        <article class="card" data-target="aws-production-account">
+        <article class="card" data-target="192.168.1.1">
           <div class="card-h">
             <div class="card-h-title">
-              <h2>aws-production-account</h2>
-              <span class="badge-subtle">4 item(s)</span>
+              <h2>192.168.1.1</h2>
+              <span class="badge-subtle">2 item(s)</span>
             </div>
-            <div class="pills"><span class="pill" style="background:#ff7a45">high: 1</span><span class="pill" style="background:#d4a359">medium: 2</span><span class="pill" style="background:#7a9ebb">low: 1</span></div>
+            <div class="pills"><span class="pill" style="background:#8a93a6">info: 2</span></div>
           </div>
           <div class="table-wrap">
             <table>
@@ -471,40 +475,17 @@
                   <th>Detail &amp; Evidence</th>
                 </tr>
               </thead>
-              <tbody><tr data-sev="severity.high"><td><span class="sev" style="background:#8a93a6">severity.high</span></td><td><span class="tool-tag">prowler</span></td><td><span class="type-tag">FindingType.MISCONFIGURATION</span></td><td><span class="val-mono">s3_bucket_public_read</span></td><td class="dim">Bucket corp-assets-prod has public read ACL granted to Anonymous users</td></tr><tr data-sev="severity.medium"><td><span class="sev" style="background:#8a93a6">severity.medium</span></td><td><span class="tool-tag">prowler</span></td><td><span class="type-tag">FindingType.MISCONFIGURATION</span></td><td><span class="val-mono">iam_root_mfa_disabled</span></td><td class="dim">Hardware/Virtual MFA is not enforced on root account credentials</td></tr><tr data-sev="severity.medium"><td><span class="sev" style="background:#8a93a6">severity.medium</span></td><td><span class="tool-tag">prowler</span></td><td><span class="type-tag">FindingType.MISCONFIGURATION</span></td><td><span class="val-mono">securitygroup_open_ssh</span></td><td class="dim">Security Group sg-0834fa2 permits ingress 0.0.0.0/0 on TCP port 22</td></tr><tr data-sev="severity.low"><td><span class="sev" style="background:#8a93a6">severity.low</span></td><td><span class="tool-tag">prowler</span></td><td><span class="type-tag">FindingType.MISCONFIGURATION</span></td><td><span class="val-mono">cloudwatch_alarms_unconfigured</span></td><td class="dim">No CloudWatch metric alarm registered for root account usage</td></tr></tbody>
+              <tbody><tr data-sev="info"><td><span class="sev" style="background:#8a93a6">info</span></td><td><span class="tool-tag">lan_scanner</span></td><td><span class="type-tag">port</span></td><td><span class="val-mono">53/tcp</span></td><td class="dim">DNS (Pi-hole / Unbound resolver)</td></tr><tr data-sev="info"><td><span class="sev" style="background:#8a93a6">info</span></td><td><span class="tool-tag">lan_scanner</span></td><td><span class="type-tag">port</span></td><td><span class="val-mono">443/tcp</span></td><td class="dim">HTTPS Router Management UI</td></tr></tbody>
             </table>
           </div>
         </article>
-        <article class="card" data-target="example.com">
+        <article class="card" data-target="192.168.1.100">
           <div class="card-h">
             <div class="card-h-title">
-              <h2>example.com</h2>
-              <span class="badge-subtle">10 item(s)</span>
-            </div>
-            <div class="pills"><span class="pill" style="background:#ff3b5c">critical: 1</span><span class="pill" style="background:#ff7a45">high: 2</span><span class="pill" style="background:#d4a359">medium: 2</span><span class="pill" style="background:#7a9ebb">low: 3</span><span class="pill" style="background:#8a93a6">info: 2</span></div>
-          </div>
-          <div class="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th style="width: 88px;">Sev</th>
-                  <th style="width: 120px;">Tool</th>
-                  <th style="width: 136px;">Type</th>
-                  <th>Discovered Value</th>
-                  <th>Detail &amp; Evidence</th>
-                </tr>
-              </thead>
-              <tbody><tr data-sev="severity.critical"><td><span class="sev" style="background:#8a93a6">severity.critical</span></td><td><span class="tool-tag">nuclei</span></td><td><span class="type-tag">FindingType.VULNERABILITY</span></td><td><span class="val-mono">CVE-2024-21413 # MonikerLink</span></td><td class="dim">Remote Code Execution verified via Nuclei HTTP template match on /autodiscover</td></tr><tr data-sev="severity.high"><td><span class="sev" style="background:#8a93a6">severity.high</span></td><td><span class="tool-tag">osv_correlate</span></td><td><span class="type-tag">FindingType.VULNERABILITY</span></td><td><span class="val-mono">openssl@1.1.1k</span></td><td class="dim">CVE-2023-0286 · High-severity memory corruption advisory</td></tr><tr data-sev="severity.high"><td><span class="sev" style="background:#8a93a6">severity.high</span></td><td><span class="tool-tag">nuclei</span></td><td><span class="type-tag">FindingType.MISCONFIGURATION</span></td><td><span class="val-mono">git-config-disclosure</span></td><td class="dim">Exposed /.git/config disclosing internal repository upstream and author emails</td></tr><tr data-sev="severity.medium"><td><span class="sev" style="background:#8a93a6">severity.medium</span></td><td><span class="tool-tag">httpx</span></td><td><span class="type-tag">FindingType.TECHNOLOGY</span></td><td><span class="val-mono">Apache/2.4.41 (Ubuntu)</span></td><td class="dim">status=200 · webserver=Apache · cdn=false</td></tr><tr data-sev="severity.medium"><td><span class="sev" style="background:#8a93a6">severity.medium</span></td><td><span class="tool-tag">nuclei</span></td><td><span class="type-tag">FindingType.MISCONFIGURATION</span></td><td><span class="val-mono">missing-strict-transport-security</span></td><td class="dim">HTTP header Strict-Transport-Security is absent on root domain response</td></tr><tr data-sev="severity.low"><td><span class="sev" style="background:#8a93a6">severity.low</span></td><td><span class="tool-tag">subfinder</span></td><td><span class="type-tag">FindingType.SUBDOMAIN</span></td><td><span class="val-mono">api.example.com</span></td><td class="dim">Source: crt.sh passive certificate enumeration</td></tr><tr data-sev="severity.low"><td><span class="sev" style="background:#8a93a6">severity.low</span></td><td><span class="tool-tag">subfinder</span></td><td><span class="type-tag">FindingType.SUBDOMAIN</span></td><td><span class="val-mono">staging-internal.example.com</span></td><td class="dim">Source: DNS brute/passive intelligence feeds</td></tr><tr data-sev="severity.low"><td><span class="sev" style="background:#8a93a6">severity.low</span></td><td><span class="tool-tag">httpx</span></td><td><span class="type-tag">FindingType.HOST</span></td><td><span class="val-mono">93.184.216.34:443</span></td><td class="dim">TLS v1.3 handshake successful · ASN: AS15133 EdgeCast</td></tr><tr data-sev="severity.info"><td><span class="sev" style="background:#8a93a6">severity.info</span></td><td><span class="tool-tag">crtsh</span></td><td><span class="type-tag">FindingType.SUBDOMAIN</span></td><td><span class="val-mono">mail.example.com</span></td><td class="dim">Logged in DigiCert Global Root G2 certificate issuance</td></tr><tr data-sev="severity.info"><td><span class="sev" style="background:#8a93a6">severity.info</span></td><td><span class="tool-tag">http_probe</span></td><td><span class="type-tag">FindingType.TECHNOLOGY</span></td><td><span class="val-mono">HTTP/2 supported</span></td><td class="dim">ALPN negotiated protocol h2 over TLS</td></tr></tbody>
-            </table>
-          </div>
-        </article>
-        <article class="card" data-target="target-operator">
-          <div class="card-h">
-            <div class="card-h-title">
-              <h2>target-operator</h2>
+              <h2>192.168.1.100</h2>
               <span class="badge-subtle">3 item(s)</span>
             </div>
-            <div class="pills"><span class="pill" style="background:#7a9ebb">low: 1</span><span class="pill" style="background:#8a93a6">info: 2</span></div>
+            <div class="pills"><span class="pill" style="background:#d4a359">medium: 2</span><span class="pill" style="background:#8a93a6">info: 1</span></div>
           </div>
           <div class="table-wrap">
             <table>
@@ -517,14 +498,37 @@
                   <th>Detail &amp; Evidence</th>
                 </tr>
               </thead>
-              <tbody><tr data-sev="severity.low"><td><span class="sev" style="background:#8a93a6">severity.low</span></td><td><span class="tool-tag">sherlock</span></td><td><span class="type-tag">FindingType.ACCOUNT</span></td><td><span class="val-mono">https://github.com/target-operator</span></td><td class="dim">Profile active · verified public commit activity in infrastructure repositories</td></tr><tr data-sev="severity.info"><td><span class="sev" style="background:#8a93a6">severity.info</span></td><td><span class="tool-tag">sherlock</span></td><td><span class="type-tag">FindingType.ACCOUNT</span></td><td><span class="val-mono">https://x.com/target-operator</span></td><td class="dim">Account presence verified · HTTP status 200 response</td></tr><tr data-sev="severity.info"><td><span class="sev" style="background:#8a93a6">severity.info</span></td><td><span class="tool-tag">sherlock</span></td><td><span class="type-tag">FindingType.ACCOUNT</span></td><td><span class="val-mono">https://gitlab.com/target-operator</span></td><td class="dim">Public developer account registered</td></tr></tbody>
+              <tbody><tr data-sev="medium"><td><span class="sev" style="background:#d4a359">medium</span></td><td><span class="tool-tag">lan_scanner</span></td><td><span class="type-tag">port</span></td><td><span class="val-mono">445/tcp</span></td><td class="dim">SMB File Sharing — Samba dialect 3.1.1</td></tr><tr data-sev="medium"><td><span class="sev" style="background:#d4a359">medium</span></td><td><span class="tool-tag">lan_scanner</span></td><td><span class="type-tag">port</span></td><td><span class="val-mono">2049/tcp</span></td><td class="dim">NFS Storage — Network File System mount daemon</td></tr><tr data-sev="info"><td><span class="sev" style="background:#8a93a6">info</span></td><td><span class="tool-tag">lan_scanner</span></td><td><span class="type-tag">port</span></td><td><span class="val-mono">32400/tcp</span></td><td class="dim">Plex Media Server — Streaming server operational</td></tr></tbody>
+            </table>
+          </div>
+        </article>
+        <article class="card" data-target="192.168.1.50">
+          <div class="card-h">
+            <div class="card-h-title">
+              <h2>192.168.1.50</h2>
+              <span class="badge-subtle">8 item(s)</span>
+            </div>
+            <div class="pills"><span class="pill" style="background:#ff3b5c">critical: 1</span><span class="pill" style="background:#ff7a45">high: 3</span><span class="pill" style="background:#d4a359">medium: 3</span><span class="pill" style="background:#8a93a6">info: 1</span></div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th style="width: 88px;">Sev</th>
+                  <th style="width: 120px;">Tool</th>
+                  <th style="width: 136px;">Type</th>
+                  <th>Discovered Value</th>
+                  <th>Detail &amp; Evidence</th>
+                </tr>
+              </thead>
+              <tbody><tr data-sev="critical"><td><span class="sev" style="background:#ff3b5c">critical</span></td><td><span class="tool-tag">lan_scanner</span></td><td><span class="type-tag">port</span></td><td><span class="val-mono">2375/tcp</span></td><td class="dim">Docker Daemon (Raw TCP) — Unencrypted remote API access detected</td></tr><tr data-sev="high"><td><span class="sev" style="background:#ff7a45">high</span></td><td><span class="tool-tag">lan_scanner</span></td><td><span class="type-tag">port</span></td><td><span class="val-mono">6379/tcp</span></td><td class="dim">Redis DB — In-memory store listening without auth</td></tr><tr data-sev="high"><td><span class="sev" style="background:#ff7a45">high</span></td><td><span class="tool-tag">cert_audit</span></td><td><span class="type-tag">misconfiguration</span></td><td><span class="val-mono">cert:8006/tcp</span></td><td class="dim">Certificate on port 8006 expires in 6 days (Let&#x27;s Encrypt)</td></tr><tr data-sev="medium"><td><span class="sev" style="background:#d4a359">medium</span></td><td><span class="tool-tag">lan_scanner</span></td><td><span class="type-tag">port</span></td><td><span class="val-mono">8006/tcp</span></td><td class="dim">Proxmox VE Console — Hypervisor management interface active</td></tr><tr data-sev="medium"><td><span class="sev" style="background:#d4a359">medium</span></td><td><span class="tool-tag">lan_scanner</span></td><td><span class="type-tag">port</span></td><td><span class="val-mono">9443/tcp</span></td><td class="dim">Portainer HTTPS — Docker management UI</td></tr><tr data-sev="medium"><td><span class="sev" style="background:#d4a359">medium</span></td><td><span class="tool-tag">lan_scanner</span></td><td><span class="type-tag">port</span></td><td><span class="val-mono">8123/tcp</span></td><td class="dim">Home Assistant — Local smart home orchestrator</td></tr><tr data-sev="info"><td><span class="sev" style="background:#8a93a6">info</span></td><td><span class="tool-tag">lan_scanner</span></td><td><span class="type-tag">port</span></td><td><span class="val-mono">22/tcp</span></td><td class="dim">SSH OpenSSH 9.6 — Public key authentication enforced</td></tr><tr data-sev="high"><td><span class="sev" style="background:#ff7a45">high</span></td><td><span class="tool-tag">state_diff</span></td><td><span class="type-tag">note</span></td><td><span class="val-mono">drift:2375/tcp</span></td><td class="dim">🚨 [NEW PORT DETECTED] 2375/tcp appeared on 192.168.1.50 since last scan</td></tr></tbody>
             </table>
           </div>
         </article>
     </section>
 
     <footer>
-      Autonomous assessment generated by Sentinel Cyber Agent &bull; Zero external CDN dependencies
+      Autonomous assessment generated by Sentinel Cyber Agent &bull; Low-memory engine &bull; Zero external CDN dependencies
     </footer>
   </main>
 
@@ -540,13 +544,34 @@
       });
     });
 
+    function filterPorts(category, btn) {
+      document.querySelectorAll('.port-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      const rows = document.querySelectorAll('.port-row');
+
+      rows.forEach(r => {
+        const sev = r.getAttribute('data-sev') || '';
+        const cat = r.getAttribute('data-cat') || '';
+
+        if (category === 'all') {
+          r.style.display = '';
+        } else if (category === 'high-crit') {
+          r.style.display = (sev === 'critical' || sev === 'high') ? '' : 'none';
+        } else if (category === 'containers') {
+          r.style.display = (cat.includes('container') || cat.includes('docker')) ? '' : 'none';
+        } else if (category === 'database') {
+          r.style.display = (cat.includes('database') || cat.includes('storage')) ? '' : 'none';
+        }
+      });
+    }
+
     function handleSearch() {
       applyFilters();
     }
 
     function applyFilters() {
       const query = (document.getElementById('searchInput').value || '').toLowerCase().trim();
-      const cards = document.querySelectorAll('.card');
+      const cards = document.querySelectorAll('.card:not(.ports-card)');
 
       cards.forEach(card => {
         const rows = card.querySelectorAll('tbody tr');
