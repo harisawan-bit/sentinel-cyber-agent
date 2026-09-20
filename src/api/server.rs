@@ -29,9 +29,9 @@ pub async fn start_dashboard(_config_path: &str) -> Result<()> {
         .route("/api/findings", get(api_get_findings))
         .route("/api/findings/scan", post(api_scan_target))
         .route("/api/block", post(api_block_ip))
-        .route("/api/findings/:id/delete", post(api_delete_finding))
+        .route("/api/findings/{id}/delete", post(api_delete_finding))
         .route("/api/compliance", get(api_compliance))
-        .nest_service("/", ServeDir::new(&static_dir).append_index_html_on_directories(true));
+        .fallback_service(ServeDir::new(&static_dir).append_index_html_on_directories(true));
     
     let listener = tokio::net::TcpListener::bind("0.0.0.0:8080").await?;
     tracing::info!(address = "0.0.0.0:8080", "Dashboard listening");
