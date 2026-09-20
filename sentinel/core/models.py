@@ -39,5 +39,11 @@ class Finding:
     timestamp: float = field(default_factory=time.time)
     id: str = field(default_factory=lambda: uuid.uuid4().hex[:12])
 
+    def __post_init__(self) -> None:
+        if hasattr(self.severity, "value"):
+            self.severity = str(self.severity.value)
+        if hasattr(self.finding_type, "value"):
+            self.finding_type = str(self.finding_type.value)
+
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
