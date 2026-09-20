@@ -56,6 +56,11 @@ def test_report_renders():
     assert "SENTINEL" in html
     assert "nginx" in html
     assert "CVE-1" in html
+    assert "#0e0e0e" in html
+    assert "#8b3a3a" in html
+    assert "progress-card" in html
+    assert "controls-bar" in html
+    assert "card-radius" in html
 
 
 def test_osv_query_known_package():

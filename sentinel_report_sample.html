@@ -1,0 +1,575 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SENTINEL // Production Assessment Report</title>
+<style>
+  :root {
+    --bg: #0e0e0e;
+    --surface: #161616;
+    --surface-raised: #1c1c1c;
+    --surface-hover: #222222;
+    --border: #2a2a2a;
+    --border-strong: #3d3d3d;
+    --border-silver: #4a4a4a;
+    --border-focus: #666666;
+    --text-primary: #e8e4dc;
+    --text-secondary: #9a948c;
+    --text-muted: #5e5a54;
+    --silver: #c5cbd3;
+    --silver-glow: rgba(197, 203, 211, 0.12);
+    --accent: #8b3a3a;
+    --accent-hover: #a14444;
+    --accent-subtle: rgba(139, 58, 58, 0.18);
+    --accent-glow: rgba(139, 58, 58, 0.28);
+    --card-radius: 14px;
+    --pill-radius: 999px;
+    --font-serif: "Newsreader", Georgia, "Times New Roman", serif;
+    --font-sans: "IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    --space-xs: 4px;
+    --space-sm: 8px;
+    --space-md: 16px;
+    --space-lg: 24px;
+    --space-xl: 32px;
+    --space-xxl: 48px;
+  }
+
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+
+  body {
+    background-color: var(--bg);
+    color: var(--text-primary);
+    font-family: var(--font-sans);
+    font-size: 14px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    min-height: 100vh;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    * {
+      animation-duration: 0.01ms !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+
+  /* Header */
+  header {
+    background: linear-gradient(180deg, #141414 0%, var(--bg) 100%);
+    border-bottom: 1px solid var(--border);
+    padding: var(--space-xl) var(--space-lg) var(--space-lg);
+  }
+
+  .header-container {
+    max-width: 1440px;
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-sm);
+  }
+
+  .brand-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: var(--space-md);
+  }
+
+  .brand-group {
+    display: flex;
+    align-items: center;
+    gap: var(--space-md);
+  }
+
+  .brand-badge {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--silver);
+    background: var(--surface-raised);
+    border: 1px solid var(--border-strong);
+    padding: 4px 10px;
+    border-radius: var(--pill-radius);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+  }
+
+  h1 {
+    font-family: var(--font-serif);
+    font-size: 28px;
+    font-weight: 500;
+    letter-spacing: -0.01em;
+    color: var(--text-primary);
+  }
+
+  .header-subtitle {
+    color: var(--text-secondary);
+    font-size: 13px;
+    display: flex;
+    gap: var(--space-sm);
+    flex-wrap: wrap;
+    align-items: center;
+  }
+
+  .header-subtitle strong {
+    color: var(--text-primary);
+  }
+
+  /* Main Container */
+  main.wrap {
+    max-width: 1440px;
+    margin: 0 auto;
+    padding: var(--space-xl) var(--space-lg) var(--space-xxl);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-lg);
+  }
+
+  /* Progress & Severity Distribution Card */
+  .progress-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--card-radius);
+    padding: var(--space-md) var(--space-lg);
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.03);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-sm);
+  }
+
+  .progress-card-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: var(--space-sm);
+  }
+
+  .progress-title {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-secondary);
+  }
+
+  .progress-stats {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    color: var(--text-primary);
+  }
+
+  .progress-stats span {
+    color: var(--silver);
+    font-weight: 700;
+  }
+
+  .progress-bar-bg {
+    width: 100%;
+    height: 8px;
+    background: var(--surface-raised);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    overflow: hidden;
+    display: flex;
+  }
+
+  .dist-seg {
+    height: 100%;
+    transition: width 0.3s ease;
+  }
+
+  /* Interactive Controls Bar */
+  .controls-bar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: var(--space-md);
+    flex-wrap: wrap;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    padding: var(--space-sm) var(--space-md);
+    border-radius: var(--card-radius);
+  }
+
+  .filter-group {
+    display: flex;
+    gap: var(--space-sm);
+    align-items: center;
+    flex-wrap: wrap;
+  }
+
+  .filter-label {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin-right: 4px;
+    text-transform: uppercase;
+  }
+
+  .pill {
+    font-family: var(--font-mono);
+    color: #0e0e0e;
+    font-weight: 700;
+    padding: 3px 10px;
+    border-radius: var(--pill-radius);
+    font-size: 11px;
+    letter-spacing: 0.02em;
+    border: 1px solid transparent;
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+
+  .pill:hover {
+    opacity: 0.9;
+    transform: translateY(-1px);
+  }
+
+  .pill.active {
+    outline: 2px solid var(--silver);
+    box-shadow: 0 0 8px var(--silver-glow);
+  }
+
+  .pill-all {
+    background: var(--silver);
+    color: #0e0e0e;
+  }
+
+  .search-input {
+    background: var(--surface-raised);
+    border: 1px solid var(--border);
+    color: var(--text-primary);
+    padding: 6px 14px;
+    border-radius: var(--pill-radius);
+    font-family: var(--font-sans);
+    font-size: 13px;
+    outline: none;
+    width: 260px;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  }
+
+  .search-input:focus {
+    border-color: var(--border-silver);
+    box-shadow: 0 0 0 2px var(--silver-glow);
+  }
+
+  /* Target Cards */
+  .target-container {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-lg);
+  }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--card-radius);
+    overflow: hidden;
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+    transition: border-color 0.2s ease;
+  }
+
+  .card:hover {
+    border-color: var(--border-strong);
+  }
+
+  .card-h {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: var(--space-md) var(--space-lg);
+    border-bottom: 1px solid var(--border);
+    background: linear-gradient(90deg, var(--surface) 0%, var(--surface-raised) 100%);
+  }
+
+  .card-h-title {
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-sm);
+  }
+
+  .card-h h2 {
+    font-family: var(--font-serif);
+    font-size: 18px;
+    font-weight: 500;
+    color: var(--text-primary);
+  }
+
+  .badge-subtle {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-muted);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    padding: 1px 6px;
+    border-radius: 4px;
+  }
+
+  .pills {
+    display: flex;
+    gap: var(--space-xs);
+    flex-wrap: wrap;
+  }
+
+  /* Table */
+  .table-wrap {
+    overflow-x: auto;
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+
+  th, td {
+    text-align: left;
+    padding: 10px var(--space-lg);
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+  }
+
+  th {
+    color: var(--text-secondary);
+    font-family: var(--font-mono);
+    font-weight: 600;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    background: var(--surface-raised);
+    border-bottom: 1px solid var(--border-strong);
+  }
+
+  tr:last-child td {
+    border-bottom: none;
+  }
+
+  tr:hover td {
+    background: var(--surface-hover);
+  }
+
+  .sev {
+    color: #0e0e0e;
+    font-family: var(--font-mono);
+    font-weight: 700;
+    padding: 2px 7px;
+    border-radius: 4px;
+    font-size: 10px;
+    text-transform: uppercase;
+    display: inline-block;
+    letter-spacing: 0.04em;
+  }
+
+  .tool-tag {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--silver);
+    background: var(--surface-raised);
+    border: 1px solid var(--border);
+    padding: 2px 6px;
+    border-radius: 4px;
+    display: inline-block;
+  }
+
+  .type-tag {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--text-secondary);
+  }
+
+  .val-mono {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--text-primary);
+    word-break: break-all;
+  }
+
+  td.dim {
+    color: var(--text-secondary);
+    font-size: 12px;
+  }
+
+  /* Footer */
+  footer {
+    text-align: center;
+    color: var(--text-muted);
+    font-size: 12px;
+    font-family: var(--font-mono);
+    margin-top: var(--space-xl);
+  }
+</style>
+</head>
+<body>
+  <header>
+    <div class="header-container">
+      <div class="brand-row">
+        <div class="brand-group">
+          <h1>SENTINEL // Production Assessment Report</h1>
+          <span class="brand-badge">MIT Orchestrator</span>
+        </div>
+        <div class="header-subtitle">
+          <span>Total findings: <strong>17</strong></span>
+          <span>&bull;</span>
+          <span>Target(s): <strong>3</strong></span>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <!-- Distribution Progress Bar -->
+    <section class="progress-card" aria-label="Finding Severity Distribution">
+      <div class="progress-card-top">
+        <div class="progress-title">Severity Spectrum</div>
+        <div class="progress-stats">
+          <span>17</span> total validated event(s)
+        </div>
+      </div>
+      <div class="progress-bar-bg">
+        <div class="dist-seg" style="width:5.9%; background:#ff3b5c;" title="CRITICAL: 1 (5.9%)"></div><div class="dist-seg" style="width:17.6%; background:#ff7a45;" title="HIGH: 3 (17.6%)"></div><div class="dist-seg" style="width:23.5%; background:#d4a359;" title="MEDIUM: 4 (23.5%)"></div><div class="dist-seg" style="width:29.4%; background:#7a9ebb;" title="LOW: 5 (29.4%)"></div><div class="dist-seg" style="width:23.5%; background:#8a93a6;" title="INFO: 4 (23.5%)"></div>
+      </div>
+    </section>
+
+    <!-- Interactive Filters & Search -->
+    <section class="controls-bar" aria-label="Report Controls">
+      <div class="filter-group">
+        <span class="filter-label">Filter:</span>
+        <button class="filter-btn pill pill-all active" data-filter="all">ALL: 17</button>
+        <button class="filter-btn pill" data-filter="critical" style="background:#ff3b5c">critical: 1</button><button class="filter-btn pill" data-filter="high" style="background:#ff7a45">high: 3</button><button class="filter-btn pill" data-filter="medium" style="background:#d4a359">medium: 4</button><button class="filter-btn pill" data-filter="low" style="background:#7a9ebb">low: 5</button><button class="filter-btn pill" data-filter="info" style="background:#8a93a6">info: 4</button>
+      </div>
+      <div>
+        <input type="text" id="searchInput" class="search-input" placeholder="Search host, tool, CVE..." oninput="handleSearch()">
+      </div>
+    </section>
+
+    <!-- Target Cards -->
+    <section class="target-container" id="targetContainer">
+      
+        <article class="card" data-target="aws-production-account">
+          <div class="card-h">
+            <div class="card-h-title">
+              <h2>aws-production-account</h2>
+              <span class="badge-subtle">4 item(s)</span>
+            </div>
+            <div class="pills"><span class="pill" style="background:#ff7a45">high: 1</span><span class="pill" style="background:#d4a359">medium: 2</span><span class="pill" style="background:#7a9ebb">low: 1</span></div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th style="width: 88px;">Sev</th>
+                  <th style="width: 120px;">Tool</th>
+                  <th style="width: 136px;">Type</th>
+                  <th>Discovered Value</th>
+                  <th>Detail &amp; Evidence</th>
+                </tr>
+              </thead>
+              <tbody><tr data-sev="severity.high"><td><span class="sev" style="background:#8a93a6">severity.high</span></td><td><span class="tool-tag">prowler</span></td><td><span class="type-tag">FindingType.MISCONFIGURATION</span></td><td><span class="val-mono">s3_bucket_public_read</span></td><td class="dim">Bucket corp-assets-prod has public read ACL granted to Anonymous users</td></tr><tr data-sev="severity.medium"><td><span class="sev" style="background:#8a93a6">severity.medium</span></td><td><span class="tool-tag">prowler</span></td><td><span class="type-tag">FindingType.MISCONFIGURATION</span></td><td><span class="val-mono">iam_root_mfa_disabled</span></td><td class="dim">Hardware/Virtual MFA is not enforced on root account credentials</td></tr><tr data-sev="severity.medium"><td><span class="sev" style="background:#8a93a6">severity.medium</span></td><td><span class="tool-tag">prowler</span></td><td><span class="type-tag">FindingType.MISCONFIGURATION</span></td><td><span class="val-mono">securitygroup_open_ssh</span></td><td class="dim">Security Group sg-0834fa2 permits ingress 0.0.0.0/0 on TCP port 22</td></tr><tr data-sev="severity.low"><td><span class="sev" style="background:#8a93a6">severity.low</span></td><td><span class="tool-tag">prowler</span></td><td><span class="type-tag">FindingType.MISCONFIGURATION</span></td><td><span class="val-mono">cloudwatch_alarms_unconfigured</span></td><td class="dim">No CloudWatch metric alarm registered for root account usage</td></tr></tbody>
+            </table>
+          </div>
+        </article>
+        <article class="card" data-target="example.com">
+          <div class="card-h">
+            <div class="card-h-title">
+              <h2>example.com</h2>
+              <span class="badge-subtle">10 item(s)</span>
+            </div>
+            <div class="pills"><span class="pill" style="background:#ff3b5c">critical: 1</span><span class="pill" style="background:#ff7a45">high: 2</span><span class="pill" style="background:#d4a359">medium: 2</span><span class="pill" style="background:#7a9ebb">low: 3</span><span class="pill" style="background:#8a93a6">info: 2</span></div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th style="width: 88px;">Sev</th>
+                  <th style="width: 120px;">Tool</th>
+                  <th style="width: 136px;">Type</th>
+                  <th>Discovered Value</th>
+                  <th>Detail &amp; Evidence</th>
+                </tr>
+              </thead>
+              <tbody><tr data-sev="severity.critical"><td><span class="sev" style="background:#8a93a6">severity.critical</span></td><td><span class="tool-tag">nuclei</span></td><td><span class="type-tag">FindingType.VULNERABILITY</span></td><td><span class="val-mono">CVE-2024-21413 # MonikerLink</span></td><td class="dim">Remote Code Execution verified via Nuclei HTTP template match on /autodiscover</td></tr><tr data-sev="severity.high"><td><span class="sev" style="background:#8a93a6">severity.high</span></td><td><span class="tool-tag">osv_correlate</span></td><td><span class="type-tag">FindingType.VULNERABILITY</span></td><td><span class="val-mono">openssl@1.1.1k</span></td><td class="dim">CVE-2023-0286 · High-severity memory corruption advisory</td></tr><tr data-sev="severity.high"><td><span class="sev" style="background:#8a93a6">severity.high</span></td><td><span class="tool-tag">nuclei</span></td><td><span class="type-tag">FindingType.MISCONFIGURATION</span></td><td><span class="val-mono">git-config-disclosure</span></td><td class="dim">Exposed /.git/config disclosing internal repository upstream and author emails</td></tr><tr data-sev="severity.medium"><td><span class="sev" style="background:#8a93a6">severity.medium</span></td><td><span class="tool-tag">httpx</span></td><td><span class="type-tag">FindingType.TECHNOLOGY</span></td><td><span class="val-mono">Apache/2.4.41 (Ubuntu)</span></td><td class="dim">status=200 · webserver=Apache · cdn=false</td></tr><tr data-sev="severity.medium"><td><span class="sev" style="background:#8a93a6">severity.medium</span></td><td><span class="tool-tag">nuclei</span></td><td><span class="type-tag">FindingType.MISCONFIGURATION</span></td><td><span class="val-mono">missing-strict-transport-security</span></td><td class="dim">HTTP header Strict-Transport-Security is absent on root domain response</td></tr><tr data-sev="severity.low"><td><span class="sev" style="background:#8a93a6">severity.low</span></td><td><span class="tool-tag">subfinder</span></td><td><span class="type-tag">FindingType.SUBDOMAIN</span></td><td><span class="val-mono">api.example.com</span></td><td class="dim">Source: crt.sh passive certificate enumeration</td></tr><tr data-sev="severity.low"><td><span class="sev" style="background:#8a93a6">severity.low</span></td><td><span class="tool-tag">subfinder</span></td><td><span class="type-tag">FindingType.SUBDOMAIN</span></td><td><span class="val-mono">staging-internal.example.com</span></td><td class="dim">Source: DNS brute/passive intelligence feeds</td></tr><tr data-sev="severity.low"><td><span class="sev" style="background:#8a93a6">severity.low</span></td><td><span class="tool-tag">httpx</span></td><td><span class="type-tag">FindingType.HOST</span></td><td><span class="val-mono">93.184.216.34:443</span></td><td class="dim">TLS v1.3 handshake successful · ASN: AS15133 EdgeCast</td></tr><tr data-sev="severity.info"><td><span class="sev" style="background:#8a93a6">severity.info</span></td><td><span class="tool-tag">crtsh</span></td><td><span class="type-tag">FindingType.SUBDOMAIN</span></td><td><span class="val-mono">mail.example.com</span></td><td class="dim">Logged in DigiCert Global Root G2 certificate issuance</td></tr><tr data-sev="severity.info"><td><span class="sev" style="background:#8a93a6">severity.info</span></td><td><span class="tool-tag">http_probe</span></td><td><span class="type-tag">FindingType.TECHNOLOGY</span></td><td><span class="val-mono">HTTP/2 supported</span></td><td class="dim">ALPN negotiated protocol h2 over TLS</td></tr></tbody>
+            </table>
+          </div>
+        </article>
+        <article class="card" data-target="target-operator">
+          <div class="card-h">
+            <div class="card-h-title">
+              <h2>target-operator</h2>
+              <span class="badge-subtle">3 item(s)</span>
+            </div>
+            <div class="pills"><span class="pill" style="background:#7a9ebb">low: 1</span><span class="pill" style="background:#8a93a6">info: 2</span></div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th style="width: 88px;">Sev</th>
+                  <th style="width: 120px;">Tool</th>
+                  <th style="width: 136px;">Type</th>
+                  <th>Discovered Value</th>
+                  <th>Detail &amp; Evidence</th>
+                </tr>
+              </thead>
+              <tbody><tr data-sev="severity.low"><td><span class="sev" style="background:#8a93a6">severity.low</span></td><td><span class="tool-tag">sherlock</span></td><td><span class="type-tag">FindingType.ACCOUNT</span></td><td><span class="val-mono">https://github.com/target-operator</span></td><td class="dim">Profile active · verified public commit activity in infrastructure repositories</td></tr><tr data-sev="severity.info"><td><span class="sev" style="background:#8a93a6">severity.info</span></td><td><span class="tool-tag">sherlock</span></td><td><span class="type-tag">FindingType.ACCOUNT</span></td><td><span class="val-mono">https://x.com/target-operator</span></td><td class="dim">Account presence verified · HTTP status 200 response</td></tr><tr data-sev="severity.info"><td><span class="sev" style="background:#8a93a6">severity.info</span></td><td><span class="tool-tag">sherlock</span></td><td><span class="type-tag">FindingType.ACCOUNT</span></td><td><span class="val-mono">https://gitlab.com/target-operator</span></td><td class="dim">Public developer account registered</td></tr></tbody>
+            </table>
+          </div>
+        </article>
+    </section>
+
+    <footer>
+      Autonomous assessment generated by Sentinel Cyber Agent &bull; Zero external CDN dependencies
+    </footer>
+  </main>
+
+  <script>
+    let activeFilter = 'all';
+
+    document.querySelectorAll('.filter-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        activeFilter = btn.getAttribute('data-filter');
+        applyFilters();
+      });
+    });
+
+    function handleSearch() {
+      applyFilters();
+    }
+
+    function applyFilters() {
+      const query = (document.getElementById('searchInput').value || '').toLowerCase().trim();
+      const cards = document.querySelectorAll('.card');
+
+      cards.forEach(card => {
+        const rows = card.querySelectorAll('tbody tr');
+        let visibleCount = 0;
+
+        rows.forEach(row => {
+          const sev = (row.getAttribute('data-sev') || '').toLowerCase();
+          const text = row.innerText.toLowerCase();
+
+          const matchesFilter = (activeFilter === 'all' || sev === activeFilter);
+          const matchesQuery = (!query || text.includes(query));
+
+          if (matchesFilter && matchesQuery) {
+            row.style.display = '';
+            visibleCount++;
+          } else {
+            row.style.display = 'none';
+          }
+        });
+
+        card.style.display = (visibleCount > 0) ? '' : 'none';
+      });
+    }
+  </script>
+</body>
+</html>
