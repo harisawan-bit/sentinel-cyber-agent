@@ -5,16 +5,16 @@ use tracing;
 /// Setup seccomp filter
 pub async fn setup() -> Result<()> {
     tracing::info!("Setting up seccomp filter...");
-    
+
     // Seccomp is applied via systemd service file
     // This function verifies it's active
-    
+
     if is_enabled().await {
         tracing::info!("Seccomp filter active");
     } else {
         tracing::warn!("Seccomp filter not active - apply via systemd");
     }
-    
+
     Ok(())
 }
 

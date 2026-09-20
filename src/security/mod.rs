@@ -12,16 +12,16 @@ use tracing;
 /// Initialize security hardening
 pub async fn init() -> Result<()> {
     tracing::info!("Initializing security hardening...");
-    
+
     // Drop capabilities
     capabilities::drop().await?;
-    
+
     // Setup seccomp
     seccomp::setup().await?;
-    
+
     // Initialize audit
     audit::init().await?;
-    
+
     tracing::info!("Security hardening initialized");
     Ok(())
 }
