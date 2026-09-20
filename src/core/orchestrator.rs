@@ -25,28 +25,28 @@ pub struct ScanConfig {
 /// Run the orchestrator pipeline against a target
 pub async fn scan(target: &str, stages: Option<Vec<String>>) -> Result<Vec<Finding>> {
     let mut findings = Vec::new();
-    
+
     let stage_filter = stages.unwrap_or_else(|| vec!["recon".to_string(), "scan".to_string()]);
-    
+
     // Run recon plugins
     if stage_filter.contains(&"recon".to_string()) {
         findings.extend(crate::plugins::run_recon(target).await?);
     }
-    
+
     // Run scan plugins
     if stage_filter.contains(&"scan".to_string()) {
         findings.extend(crate::plugins::run_scan(target).await?);
     }
-    
+
     // Run osint plugins
     if stage_filter.contains(&"osint".to_string()) {
         findings.extend(crate::plugins::run_osint(target).await?);
     }
-    
+
     // Run cloud plugins
     if stage_filter.contains(&"cloud".to_string()) {
         findings.extend(crate::plugins::run_cloud(target).await?);
     }
-    
+
     Ok(findings)
 }

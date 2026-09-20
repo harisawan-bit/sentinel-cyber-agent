@@ -20,7 +20,7 @@ pub enum ComplianceStatus {
 
 pub async fn scan() -> Result<Vec<ComplianceCheck>> {
     let mut checks = Vec::new();
-    
+
     // CIS Benchmark checks would go here
     checks.push(ComplianceCheck {
         id: "CIS-1.1.1".to_string(),
@@ -29,6 +29,6 @@ pub async fn scan() -> Result<Vec<ComplianceCheck>> {
         description: "Check that unnecessary filesystems are not mounted".to_string(),
         remediation: None,
     });
-    
+
     Ok(checks)
 }

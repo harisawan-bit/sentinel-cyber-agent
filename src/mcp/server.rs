@@ -13,7 +13,7 @@ impl SentinelMcpServer {
 
     pub async fn serve_stdio(self) -> Result<()> {
         tracing::info!("MCP server listening on stdio");
-        
+
         let stdin = tokio::io::stdin();
         let stdout = tokio::io::stdout();
         let mut reader = BufReader::new(stdin);
@@ -44,7 +44,9 @@ impl SentinelMcpServer {
     async fn handle_request(&self, line: &str) -> serde_json::Value {
         let request: serde_json::Value = match serde_json::from_str(line.trim()) {
             Ok(v) => v,
-            Err(_) => return json!({"jsonrpc":"2.0","error":{"code":-32700,"message":"Parse error"}}),
+            Err(_) => {
+                return json!({"jsonrpc":"2.0","error":{"code":-32700,"message":"Parse error"}});
+            }
         };
 
         let method = request.get("method").and_then(|m| m.as_str()).unwrap_or("");
@@ -215,7 +217,10 @@ impl SentinelMcpServer {
                 json!({ "content": [{ "type": "text", "text": format!("Blocked IP: {}", ip) }] })
             }
             "sentinel_isolate_container" => {
-                let container = args.get("container_id").and_then(|c| c.as_str()).unwrap_or("");
+                let container = args
+                    .get("container_id")
+                    .and_then(|c| c.as_str())
+                    .unwrap_or("");
                 json!({ "content": [{ "type": "text", "text": format!("Isolated container: {}", container) }] })
             }
             "sentinel_rollback_config" => {
@@ -227,7 +232,10 @@ impl SentinelMcpServer {
                 json!({ "content": [{ "type": "text", "text": format!("Logs from: {}", source) }] })
             }
             "sentinel_remediate" => {
-                let finding_id = args.get("finding_id").and_then(|f| f.as_str()).unwrap_or("");
+                let finding_id = args
+                    .get("finding_id")
+                    .and_then(|f| f.as_str())
+                    .unwrap_or("");
                 json!({ "content": [{ "type": "text", "text": format!("Remediated finding: {}", finding_id) }] })
             }
             "sentinel_threat_intel" => {

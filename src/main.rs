@@ -1,11 +1,11 @@
 // src/main.rs
-mod core;
-mod plugins;
-mod mcp;
-mod api;
 mod alerting;
-mod malware;
+mod api;
+mod core;
 mod integrations;
+mod malware;
+mod mcp;
+mod plugins;
 
 use anyhow::Result;
 use clap::Parser;
@@ -83,7 +83,7 @@ async fn main() -> Result<()> {
     } else if let Some(target) = &cli.target {
         let stages = cli.stages.map(|s| s.split(',').map(String::from).collect());
         let findings = core::orchestrator::scan(target, stages).await?;
-        
+
         if cli.json {
             println!("{}", serde_json::to_string_pretty(&findings)?);
         } else {
