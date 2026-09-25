@@ -41,3 +41,4 @@ jobs:
           python tests/test_honeyport.py
           python tests/test_fim.py
           python tests/test_sigma.py
+          python tests/test_deception.py

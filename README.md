@@ -49,10 +49,18 @@ Catches active zero-day post-exploitation in real-time by inspecting `/proc`:
 * **Process Lineage & LOLBin Spawns**: Detects web daemons (`nginx`, `apache2`, `httpd`, `www-data`, `node`, `php-fpm`) or database servers (`mysqld`, `postgres`, `redis-server`) spawning interactive shells (`sh`, `bash`, `dash`) or download tools (`curl`, `wget`, `nc`, `python`).
 * **Dynamic Preload Hijack Audit**: Inspects `/etc/ld.so.preload` for injected dynamic linkers indicative of userland rootkits.
 
-### 4. Active Deception: Honeyports & Honeytokens (`honeyport`, `canary_audit`)
-Provides 100% true-positive breach indicators with zero false positives:
+### 4. Defensive Deception: High-Fidelity Decoy Keys & Burner Sandboxes (`deception`, `honeypot_burner`, `honeyport`, `canary_audit`)
+Provides 100% true-positive breach detection and diverts malicious bots away from host infrastructure:
+* **High-Fidelity Honeytokens (`--seed-honeytokens`)**: Synthesizes realistic, non-functional canary credentials:
+  * **LLM & AI Keys**: High-entropy canary tokens for OpenAI (`sk-proj-CANARY_...`), Anthropic (`sk-ant-api03-CANARY_...`), and HuggingFace (`hf_CANARY_...`).
+  * **Automation & Webhooks**: n8n workflow API keys, encryption secrets, and webhook trigger endpoints.
+  * **Infrastructure Credentials**: SMTP mailer authentication, Docker staging registry configs (`docker-config.json.canary`), and remote SSH canary keys (`id_rsa_backup.canary`).
+  * **Cryptographic Baselines**: Automatically registered into `~/.sentinel/canaries.json` with SHA-256 integrity hashes and access timestamps (`atime`). Any read inspection or tampering immediately trips a **CRITICAL** incident.
+* **Ultra-Lightweight Burner Honeypot Sandbox (`--burner-setup`, `--burner-daemon`)**:
+  * **Zero-Drain Isolation Machine**: Provides an isolated, decoy target for automated bots, AI scrapers, and malicious reconnaissance without consuming host resources.
+  * **Docker Compose Blueprint (`--burner-setup`)**: Generates an isolated sandbox strictly limited to **32MB RAM** and **0.05 CPU**, with read-only rootfs, `tmpfs` mounts, `cap_drop: ALL`, and `no-new-privileges: true`.
+  * **Pure-Python Micro-Burner Daemon (`--burner-daemon`)**: Built-in zero-dependency trap running under **<5MB RAM**, emulating decoy SSH (2222), SMTP (2525), and n8n webhook (5678) endpoints. Interactions are recorded in `~/.sentinel/burner_traps.json` and generate immediate firewall drop rules (`iptables -I INPUT -s <IP> -j DROP`).
 * **Decoy Honeyport Traps (`--honeyport-listen`)**: Binds low-resource socket listeners on unassigned ports (23 Telnet, 445 SMB, 2375 Docker, 8888 Alt-Admin). Inbound SYN packets immediately record the attacker's IP and trigger instant firewall bans.
-* **Deception Honeytokens (`--canary-init`)**: Seeds decoy credential and tripwire files (`.canary_token`). If read or modified during unauthorized internal reconnaissance, Sentinel dispatches immediate high-priority alerts.
 
 ### 5. Cryptographic File Integrity Monitoring & Anti-Persistence (`fim_audit`)
 * **SHA-256 System Baselines**: Continuously verifies cryptographic hashes for `/etc/passwd`, `/etc/shadow`, `/etc/sudoers`, `/etc/ssh/sshd_config`, and critical binaries.
@@ -109,12 +117,21 @@ sentinel --server-audit --daemon --interval 300 --notify \
   --slack-webhook "https://hooks.slack.com/services/..."
 ```
 
-### 4. Active Deception & Honeyports
+### 4. Active Deception, Honeytokens & Burner Sandboxes
 ```bash
-# Seed a local honeytoken tripwire
+# Seed high-fidelity decoy keys (LLM, SMTP, n8n, Docker, SSH) into current directory
+sentinel --seed-honeytokens .
+
+# Generate an ultra-lightweight (32MB RAM, 0.05 CPU) isolated Docker burner honeypot
+sentinel --burner-setup docker-compose.burner.yml
+
+# Or run the built-in pure-Python micro-burner trap (<5MB RAM) in the background
+sentinel --burner-daemon
+
+# Seed a basic local honeytoken canary tripwire
 sentinel --canary-init
 
-# Start active decoy honeyport listeners in the background
+# Start active decoy honeyport listeners in the background (ports 23, 445, 2375, 8888)
 sudo sentinel --honeyport-listen
 ```
 
@@ -143,6 +160,9 @@ sentinel 192.168.1.0/24 --stages recon scan --diff --report homelab_report.html
 | `--interval` | `<seconds>` | Cycle interval for daemon mode (default: `300`) |
 | `--install-systemd`| - | Generates and registers hardened Linux systemd service unit |
 | `--canary-init` | - | Initializes and arms local deception honeytoken canary file |
+| `--seed-honeytokens`| `[dir]` | Seeds decoy credentials (LLM, SMTP, n8n, Docker, SSH) into target directory |
+| `--burner-setup` | `[file]` | Generates locked-down 32MB burner honeypot docker-compose configuration |
+| `--burner-daemon`| - | Runs built-in pure-Python micro-burner trap (<5MB RAM, SSH/SMTP/n8n) |
 | `--honeyport-listen`| - | Binds active decoy honeyport listeners (ports 23, 445, 2375, 8888) |
 | `--sarif` | `<file>` | Writes findings in standardized OASIS SARIF v2.1.0 format |
 | `--report` | `<file>` | Generates self-contained, agency-grade HTML dashboard |
@@ -169,6 +189,8 @@ sentinel/
     remediation.py          # Autonomous kernel hardening engine & firewall rule generator
     sarif.py                # OASIS SARIF v2.1.0 exporter
     daemon.py               # Continuous background daemon & systemd unit installer
+    deception.py            # High-fidelity decoy credentials (LLM, SMTP, n8n, Docker, SSH) & canaries
+    honeypot_burner.py      # 32MB Docker burner sandbox generator & <5MB micro-burner daemon
     plugins/
       host_harden_plugin.py # Audit — Kernel exploit mitigations, ASLR, userns, mounts, Docker sock
       process_anomaly_plugin.py # Audit — Process lineage, LOLBin spawns, reverse shells, ld.so rootkits
@@ -200,6 +222,7 @@ tests/
   test_honeyport.py         # Test suite for active deception honeyport traps
   test_fim.py               # Test suite for cryptographic file integrity hashing
   test_sigma.py             # Test suite for Sigma rule matching & MITRE ATT&CK tagging
+  test_deception.py         # Test suite for honeytoken generation and burner honeypots
 ```
 
 ---

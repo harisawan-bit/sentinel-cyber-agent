@@ -137,3 +137,31 @@ class CanaryAuditPlugin(Plugin):
                     )
             except Exception:
                 continue
+
+        # Audit Burner Sandbox trap interactions
+        burner_log = os.path.expanduser("~/.sentinel/burner_traps.json")
+        if os.path.isfile(burner_log):
+            try:
+                with open(burner_log, "r", encoding="utf-8") as f:
+                    b_events = json.load(f)
+                for ev in b_events[-10:]:
+                    svc = ev.get("service", "BURNER_SANDBOX")
+                    rip = ev.get("remote_ip", "unknown")
+                    rport = ev.get("remote_port", 0)
+                    yield Finding(
+                        tool=self.name,
+                        finding_type=FindingType.VULNERABILITY,
+                        value=f"Burner Honeypot Tripped: {svc} by {rip}:{rport}",
+                        target=target,
+                        severity=Severity.CRITICAL,
+                        detail=f"Hostile probe diverted to isolated burner sandbox ({svc}). Attacker IP {rip} trapped.",
+                        metadata={
+                            "service": svc,
+                            "attacker_ip": rip,
+                            "remote_port": rport,
+                            "threat_category": "burner_honeypot_diverted",
+                            "iptables_ban": f"iptables -I INPUT -s {rip} -j DROP",
+                        }
+                    )
+            except Exception:
+                pass
