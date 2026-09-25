@@ -24,6 +24,10 @@ class FindingType(str, Enum):
     MISCONFIGURATION = "misconfiguration"
     ACCOUNT = "account"
     CLOUD_RESOURCE = "cloud_resource"
+    HARDENING = "hardening"
+    ANOMALY = "anomaly"
+    THREAT_INTEL = "threat_intel"
+    CANARY = "canary"
     NOTE = "note"
 
 

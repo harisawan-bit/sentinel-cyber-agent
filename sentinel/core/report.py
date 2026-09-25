@@ -34,6 +34,15 @@ def render(findings: List[Dict[str, Any]], title: str = "Sentinel Homelab Report
         if f.get("finding_type") == "port":
             port_findings.append(f)
 
+    # Server 0-Day Mitigations & Exploit Defense Findings
+    defense_findings = [
+        f for f in findings
+        if f.get("finding_type") in ("hardening", "anomaly", "threat_intel", "canary")
+        or (f.get("metadata") or {}).get("cisa_kev")
+        or (f.get("metadata") or {}).get("mitigation")
+        or (f.get("metadata") or {}).get("threat_category")
+    ]
+
     # Proportional segmented distribution bar
     bar_segments = ""
     if total > 0:
@@ -47,6 +56,64 @@ def render(findings: List[Dict[str, Any]], title: str = "Sentinel Homelab Report
                 )
     else:
         bar_segments = '<div class="dist-seg" style="width:100%; background:var(--border);" title="No findings"></div>'
+
+    # Dedicated Server 0-Day & Exploit Mitigations Matrix Section
+    defense_section = ""
+    if defense_findings:
+        def_rows = ""
+        for df in defense_findings:
+            sev = str(df.get("severity", "info")).lower()
+            color = SEV_COLORS.get(sev, "#8a93a6")
+            meta = df.get("metadata") or {}
+            tool = df.get("tool", "")
+            cat = "Kernel Mitigation" if meta.get("mitigation") else (
+                "CISA KEV Exploit" if meta.get("cisa_kev") else (
+                    "Process Anomaly" if meta.get("threat_category") == "0day_rce_execution" else (
+                        "Deception Tripwire" if "canary" in tool else df.get("finding_type", "Defense")
+                    )
+                )
+            )
+            val = df.get("value", "")
+            detail = df.get("detail", "")
+            badges = ""
+            if meta.get("cisa_kev"):
+                badges += ' <span class="cat-pill" style="background:#ff3b5c; color:#fff; font-weight:700;">IN THE WILD</span>'
+            if meta.get("epss_score") is not None:
+                badges += f' <span class="cat-pill" style="background:#ff7a45; color:#fff;">EPSS {meta["epss_score"]*100:.1f}%</span>'
+
+            def_rows += (
+                f'<tr class="port-row" data-sev="{_esc(sev)}">'
+                f'<td><span class="val-mono">{_esc(df.get("target", "localhost"))}</span></td>'
+                f'<td><span class="port-badge">{_esc(cat)}</span>{badges}</td>'
+                f'<td><span class="service-name">{_esc(val)}</span></td>'
+                f'<td><span class="sev" style="background:{color}">{_esc(sev)}</span></td>'
+                f'<td class="dim">{_esc(detail)}</td>'
+                f'</tr>'
+            )
+
+        defense_section = f"""
+        <section class="card ports-card" aria-label="Server 0-Day Mitigations and Threat Intelligence Matrix">
+          <div class="card-h">
+            <div class="card-h-title">
+              <h2>🛡️ Server 0-Day &amp; Exploit Mitigations Matrix</h2>
+              <span class="badge-subtle">{len(defense_findings)} control(s) audited</span>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th style="width: 140px;">Target</th>
+                  <th style="width: 200px;">Category</th>
+                  <th style="width: 260px;">Mitigation / Control</th>
+                  <th style="width: 90px;">Status</th>
+                  <th>Security Impact &amp; Evidence</th>
+                </tr>
+              </thead>
+              <tbody>{def_rows}</tbody>
+            </table>
+          </div>
+        </section>"""
 
     # Dedicated Open Ports Matrix Section
     ports_section = ""
@@ -114,12 +181,17 @@ def render(findings: List[Dict[str, Any]], title: str = "Sentinel Homelab Report
             metaline = " · ".join(f"{k}={v}" for k, v in meta.items() if v not in (None, ""))
             sev = str(f.get("severity", "info")).lower()
             color = SEV_COLORS.get(sev, "#8a93a6")
+            badges = ""
+            if meta.get("cisa_kev"):
+                badges += ' <span style="background:#ff3b5c; color:#fff; font-size:10px; font-weight:700; padding:2px 6px; border-radius:3px; margin-left:6px;">CISA KEV</span>'
+            if meta.get("epss_score") is not None:
+                badges += f' <span style="background:#ff7a45; color:#fff; font-size:10px; font-weight:700; padding:2px 6px; border-radius:3px; margin-left:6px;">EPSS {meta["epss_score"]*100:.1f}%</span>'
             rows += (
                 f'<tr data-sev="{_esc(sev)}">'
                 f'<td><span class="sev" style="background:{color}">{_esc(sev)}</span></td>'
                 f'<td><span class="tool-tag">{_esc(f.get("tool", ""))}</span></td>'
                 f'<td><span class="type-tag">{_esc(f.get("finding_type", ""))}</span></td>'
-                f'<td><span class="val-mono">{_esc(f.get("value", ""))}</span></td>'
+                f'<td><span class="val-mono">{_esc(f.get("value", ""))}{badges}</span></td>'
                 f'<td class="dim">{_esc(f.get("detail") or metaline)}</td>'
                 f'</tr>'
             )
@@ -567,6 +639,9 @@ def render(findings: List[Dict[str, Any]], title: str = "Sentinel Homelab Report
 
     <!-- Dedicated Open Ports Matrix -->
     {ports_section}
+
+    <!-- Server 0-Day & Exploit Mitigations Matrix -->
+    {defense_section}
 
     <!-- Interactive Filters & Search -->
     <section class="controls-bar" aria-label="Report Controls">

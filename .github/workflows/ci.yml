@@ -34,3 +34,4 @@ jobs:
         run: |
           python tests/test_core.py
           python tests/test_homelab.py
+          python tests/test_server_defense.py
