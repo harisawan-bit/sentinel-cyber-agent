@@ -101,7 +101,11 @@ def run_daemon_loop(
         if drift:
             print(f"[!] [Cycle {cycle}] Detected {len(drift)} state drift event(s):")
             for d in drift:
-                print(f"    -> {d.get('detail')}")
+                detail_str = str(d.get("detail", ""))
+                try:
+                    print(f"    -> {detail_str}")
+                except UnicodeEncodeError:
+                    print(f"    -> {detail_str.encode('ascii', errors='replace').decode('ascii')}")
             findings.extend(drift)
 
         # Critical / High findings filter for notification

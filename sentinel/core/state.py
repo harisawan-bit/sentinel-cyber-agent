@@ -38,7 +38,7 @@ def diff_and_update_state(findings: List[Dict[str, Any]], state_path: str = ".se
                     value=f"drift:{f.get('value')}",
                     target=target,
                     severity=Severity.HIGH if f.get("severity") in ("critical", "high") else Severity.MEDIUM,
-                    detail=f"🚨 [{prefix}] {f.get('value')} on {target} ({f.get('detail', '')})",
+                    detail=f"[ALERT] [{prefix}] {f.get('value')} on {target} ({f.get('detail', '')})",
                 ).to_dict()
             )
 

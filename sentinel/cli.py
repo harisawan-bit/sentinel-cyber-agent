@@ -9,6 +9,8 @@ from .core.remediation import apply_remediation, plan_remediation
 from .core.sarif import findings_to_sarif
 from .core.daemon import run_daemon_loop, generate_systemd_unit, install_systemd_service
 from .core.plugins.honeyport_plugin import HoneyportServer
+from .core.deception import seed_all_honeytokens
+from .core.honeypot_burner import generate_burner_docker_compose, MicroBurnerDaemon
 
 
 def main(argv=None) -> int:
@@ -20,6 +22,9 @@ def main(argv=None) -> int:
     ap.add_argument("--stages", nargs="*", help="limit to stages: recon scan osint cloud audit intel")
     ap.add_argument("--server-audit", action="store_true", help="run complete server 0-day & hardening audit (audit, intel, scan on localhost)")
     ap.add_argument("--canary-init", action="store_true", help="initialize and arm local honeytoken canary tripwire for 0-day detection")
+    ap.add_argument("--seed-honeytokens", nargs="?", const=".", default=None, help="seed high-fidelity decoy keys (LLM, SMTP, n8n, Docker, SSH) into target dir")
+    ap.add_argument("--burner-setup", nargs="?", const="docker-compose.burner.yml", default=None, help="generate locked-down 32MB burner honeypot docker-compose file")
+    ap.add_argument("--burner-daemon", action="store_true", help="start pure-Python micro-burner trap (<5MB RAM, SSH/SMTP/n8n) in background")
     ap.add_argument("--fix-kernel", action="store_true", help="autonomously apply kernel 0-day mitigations to /etc/sysctl.d/")
     ap.add_argument("--dry-run", action="store_true", help="preview remediation changes without applying")
     ap.add_argument("--daemon", action="store_true", help="run continuous background watchdog daemon")
@@ -36,6 +41,38 @@ def main(argv=None) -> int:
     ap.add_argument("--telegram-chat-id", default=None, help="Telegram Chat ID")
     ap.add_argument("--slack-webhook", default=None, help="Slack incoming webhook URL")
     args = ap.parse_args(argv)
+
+    if args.seed_honeytokens is not None:
+        target_dir = args.seed_honeytokens
+        seeded = seed_all_honeytokens(target_dir=target_dir)
+        print(f"[+] Successfully seeded {len(seeded)} honeytoken canaries into '{target_dir}':")
+        for s in seeded:
+            print(f"    -> [{s.get('category')}] {s.get('path')}")
+        if not args.targets and not args.server_audit:
+            return 0
+
+    if args.burner_setup is not None:
+        compose_content = generate_burner_docker_compose()
+        with open(args.burner_setup, "w", encoding="utf-8") as f:
+            f.write(compose_content)
+        print(f"[+] Generated locked-down burner honeypot compose file: {args.burner_setup}")
+        print("    -> Memory capped: 32MB | CPU limit: 0.05 | Network: Isolated Bridge")
+        print("    -> Run with: docker compose -f " + args.burner_setup + " up -d")
+        if not args.targets and not args.server_audit:
+            return 0
+
+    if args.burner_daemon:
+        burner = MicroBurnerDaemon()
+        burner.start()
+        print("[+] Micro-burner honeypot daemon running in background (<5MB RAM).")
+        print(f"    -> Traps active on ports: SSH={burner.ssh_port}, SMTP={burner.smtp_port}, n8n={burner.n8n_port}")
+        if not args.targets and not args.server_audit:
+            try:
+                while True:
+                    time.sleep(1)
+            except KeyboardInterrupt:
+                burner.stop()
+                return 0
 
     if args.fix_kernel:
         print("[*] Running Autonomous Kernel Hardening Remediation...")
