@@ -135,13 +135,29 @@ sentinel --canary-init
 sudo sentinel --honeyport-listen
 ```
 
-### 5. Enterprise SARIF Export
+### 5. Native C99 High-Performance Engine (<800KB RAM, 0% CPU)
+```bash
+# Build the native static binary with zero external dependencies
+make
+
+# Run the built-in self-test
+make test
+
+# Launch the native C daemon (epoll/select honeyports, inotify tripwires, auto-ban)
+./bin/sentineld
+
+# Or run C-native host audit / honeytoken seeding
+./bin/sentineld --audit
+./bin/sentineld --seed .
+```
+
+### 6. Enterprise SARIF Export
 ```bash
 # Run audit and export standardized SARIF v2.1.0 for GitHub / CI / SIEM
 sentinel --server-audit --sarif sentinel_results.sarif
 ```
 
-### 6. Homelab LAN & Network Reconnaissance
+### 7. Homelab LAN & Network Reconnaissance
 ```bash
 # Scan a homelab IP or CIDR subnet with dedicated Open Ports & Services Matrix
 sentinel 192.168.1.0/24 --stages recon scan --diff --report homelab_report.html
