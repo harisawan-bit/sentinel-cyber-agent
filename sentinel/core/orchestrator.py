@@ -7,11 +7,16 @@ from .models import Finding
 from .plugin import Plugin
 
 
+STAGE_ORDER = ["recon", "scan", "osint", "cloud", "audit", "intel"]
+
+
 class Orchestrator:
     def __init__(self) -> None:
         self.plugins: Dict[str, Plugin] = {}
         self.shared: Dict[str, Any] = {"techs": []}  # cross-plugin state
         self.all_findings: List[Finding] = []
+        self.discovered_cves: List[str] = []
+        self.server_audit: bool = False
         self.load_plugins()
 
     def load_plugins(self) -> None:
@@ -33,8 +38,14 @@ class Orchestrator:
 
     def run(self, targets: List[str], stages: Optional[set] = None) -> List[Dict[str, Any]]:
         findings: List[Dict[str, Any]] = []
+        # Sort plugins by pipeline stage order
+        stage_rank = {s: i for i, s in enumerate(STAGE_ORDER)}
+        sorted_plugins = sorted(
+            self.plugins.items(),
+            key=lambda item: stage_rank.get(item[1].stage, 99)
+        )
         for target in targets:
-            for name, p in self.plugins.items():
+            for name, p in sorted_plugins:
                 if stages and p.stage not in stages:
                     continue
                 try:

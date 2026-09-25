@@ -12,8 +12,10 @@ def main(argv=None) -> int:
         prog="sentinel",
         description="Sentinel — unified MIT-licensed cyber security agent",
     )
-    ap.add_argument("targets", nargs="+", help="targets: domains, hostnames, IPs, CIDRs, or usernames")
-    ap.add_argument("--stages", nargs="*", help="limit to stages: recon scan osint cloud")
+    ap.add_argument("targets", nargs="*", default=[], help="targets: domains, hostnames, IPs, CIDRs, usernames, or 'localhost'")
+    ap.add_argument("--stages", nargs="*", help="limit to stages: recon scan osint cloud audit intel")
+    ap.add_argument("--server-audit", action="store_true", help="run complete server 0-day & hardening audit (audit, intel, scan on localhost)")
+    ap.add_argument("--canary-init", action="store_true", help="initialize and arm local honeytoken canary tripwire for 0-day detection")
     ap.add_argument("--json", action="store_true", help="emit raw JSON")
     ap.add_argument("--out", default=None, help="write findings JSON to file")
     ap.add_argument("--report", default=None, help="write autonomous HTML report to file")
@@ -24,9 +26,31 @@ def main(argv=None) -> int:
     ap.add_argument("--slack-webhook", default=None, help="Slack incoming webhook URL")
     args = ap.parse_args(argv)
 
+    if args.canary_init:
+        import hashlib
+        canary_path = os.path.abspath(".canary_token")
+        token_secret = "SENTINEL_TRIPWIRE_" + hashlib.sha256(os.urandom(32)).hexdigest()
+        with open(canary_path, "w", encoding="utf-8") as f:
+            f.write(f"# Sentinel Deception Tripwire\n# Access or modification alerts security operations.\nSECRET={token_secret}\n")
+        print(f"[+] Initialized honeytoken canary tripwire: {canary_path}")
+        if not args.targets and not args.server_audit:
+            return 0
+
     orch = Orchestrator()
+    targets = list(args.targets)
     stages = set(args.stages) if args.stages else None
-    findings = orch.run(args.targets, stages=stages)
+
+    if args.server_audit:
+        orch.server_audit = True
+        if not targets:
+            targets = ["localhost"]
+        if stages is None:
+            stages = {"audit", "intel", "scan"}
+
+    if not targets:
+        ap.error("the following arguments are required: targets (or specify --server-audit)")
+
+    findings = orch.run(targets, stages=stages)
 
     if args.diff:
         drift = diff_and_update_state(findings)

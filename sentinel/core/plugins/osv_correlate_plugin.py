@@ -62,8 +62,10 @@ class OsvCorrelatePlugin(Plugin):
                 techs.add(t.lower())
         # also pull from the tech metadata of already-emitted host findings
         for f in getattr(ctx, "all_findings", []) or []:
-            if f.get("finding_type") == "host":
-                for tk in (f.get("metadata", {}) or {}).get("tech", []):
+            ftype = f.get("finding_type") if isinstance(f, dict) else getattr(f, "finding_type", "")
+            if ftype == "host":
+                meta = (f.get("metadata", {}) if isinstance(f, dict) else getattr(f, "metadata", {})) or {}
+                for tk in meta.get("tech", []):
                     m = re.match(r".*=([\w.\-]+)", tk)
                     if m:
                         techs.add(m.group(1).lower())
