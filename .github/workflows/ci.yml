@@ -42,3 +42,8 @@ jobs:
           python tests/test_fim.py
           python tests/test_sigma.py
           python tests/test_deception.py
+
+      - name: Build and test native C99 daemon
+        run: |
+          make
+          make test

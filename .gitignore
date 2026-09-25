@@ -17,6 +17,8 @@ findings*.json
 *.zip
 .sentinel*
 .canary*
+*.canary
+sentinel_events.jsonl
 *.sarif
 
 # OS
