@@ -28,6 +28,9 @@ class FindingType(str, Enum):
     ANOMALY = "anomaly"
     THREAT_INTEL = "threat_intel"
     CANARY = "canary"
+    INTEGRITY = "integrity"
+    DECEPTION = "deception"
+    REMEDIATION = "remediation"
     NOTE = "note"
 
 

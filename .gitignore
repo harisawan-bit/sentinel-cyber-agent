@@ -15,6 +15,9 @@ bin/
 # Runtime artifacts
 findings*.json
 *.zip
+.sentinel*
+.canary*
+*.sarif
 
 # OS
 .DS_Store

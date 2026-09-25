@@ -35,3 +35,9 @@ jobs:
           python tests/test_core.py
           python tests/test_homelab.py
           python tests/test_server_defense.py
+          python tests/test_remediation.py
+          python tests/test_sarif.py
+          python tests/test_daemon.py
+          python tests/test_honeyport.py
+          python tests/test_fim.py
+          python tests/test_sigma.py

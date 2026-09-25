@@ -37,10 +37,11 @@ def render(findings: List[Dict[str, Any]], title: str = "Sentinel Homelab Report
     # Server 0-Day Mitigations & Exploit Defense Findings
     defense_findings = [
         f for f in findings
-        if f.get("finding_type") in ("hardening", "anomaly", "threat_intel", "canary")
+        if f.get("finding_type") in ("hardening", "anomaly", "threat_intel", "canary", "integrity", "deception", "remediation")
         or (f.get("metadata") or {}).get("cisa_kev")
         or (f.get("metadata") or {}).get("mitigation")
         or (f.get("metadata") or {}).get("threat_category")
+        or (f.get("metadata") or {}).get("sigma_id")
     ]
 
     # Proportional segmented distribution bar
@@ -69,7 +70,13 @@ def render(findings: List[Dict[str, Any]], title: str = "Sentinel Homelab Report
             cat = "Kernel Mitigation" if meta.get("mitigation") else (
                 "CISA KEV Exploit" if meta.get("cisa_kev") else (
                     "Process Anomaly" if meta.get("threat_category") == "0day_rce_execution" else (
-                        "Deception Tripwire" if "canary" in tool else df.get("finding_type", "Defense")
+                        "Sigma Detection" if meta.get("sigma_id") else (
+                            "File Integrity (FIM)" if "fim" in tool else (
+                                "Deception Honeyport" if "honeyport" in tool else (
+                                    "Deception Tripwire" if "canary" in tool else df.get("finding_type", "Defense")
+                                )
+                            )
+                        )
                     )
                 )
             )
@@ -80,6 +87,8 @@ def render(findings: List[Dict[str, Any]], title: str = "Sentinel Homelab Report
                 badges += ' <span class="cat-pill" style="background:#ff3b5c; color:#fff; font-weight:700;">IN THE WILD</span>'
             if meta.get("epss_score") is not None:
                 badges += f' <span class="cat-pill" style="background:#ff7a45; color:#fff;">EPSS {meta["epss_score"]*100:.1f}%</span>'
+            if meta.get("mitre_technique"):
+                badges += f' <span class="cat-pill" style="background:#5c7cfa; color:#fff; font-weight:700;">{meta["mitre_technique"]}</span>'
 
             def_rows += (
                 f'<tr class="port-row" data-sev="{_esc(sev)}">'

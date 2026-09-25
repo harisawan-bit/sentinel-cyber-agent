@@ -5,6 +5,10 @@ from .core.orchestrator import Orchestrator
 from .core.report import render
 from .core.state import diff_and_update_state
 from .core.notifiers import format_digest, send_telegram, send_slack
+from .core.remediation import apply_remediation, plan_remediation
+from .core.sarif import findings_to_sarif
+from .core.daemon import run_daemon_loop, generate_systemd_unit, install_systemd_service
+from .core.plugins.honeyport_plugin import HoneyportServer
 
 
 def main(argv=None) -> int:
@@ -16,6 +20,13 @@ def main(argv=None) -> int:
     ap.add_argument("--stages", nargs="*", help="limit to stages: recon scan osint cloud audit intel")
     ap.add_argument("--server-audit", action="store_true", help="run complete server 0-day & hardening audit (audit, intel, scan on localhost)")
     ap.add_argument("--canary-init", action="store_true", help="initialize and arm local honeytoken canary tripwire for 0-day detection")
+    ap.add_argument("--fix-kernel", action="store_true", help="autonomously apply kernel 0-day mitigations to /etc/sysctl.d/")
+    ap.add_argument("--dry-run", action="store_true", help="preview remediation changes without applying")
+    ap.add_argument("--daemon", action="store_true", help="run continuous background watchdog daemon")
+    ap.add_argument("--interval", type=int, default=300, help="daemon cycle interval in seconds (default: 300)")
+    ap.add_argument("--install-systemd", action="store_true", help="generate and install Linux systemd service")
+    ap.add_argument("--sarif", default=None, help="write findings in OASIS SARIF v2.1.0 format to file")
+    ap.add_argument("--honeyport-listen", action="store_true", help="bind active decoy honeyports in background")
     ap.add_argument("--json", action="store_true", help="emit raw JSON")
     ap.add_argument("--out", default=None, help="write findings JSON to file")
     ap.add_argument("--report", default=None, help="write autonomous HTML report to file")
@@ -25,6 +36,42 @@ def main(argv=None) -> int:
     ap.add_argument("--telegram-chat-id", default=None, help="Telegram Chat ID")
     ap.add_argument("--slack-webhook", default=None, help="Slack incoming webhook URL")
     args = ap.parse_args(argv)
+
+    if args.fix_kernel:
+        print("[*] Running Autonomous Kernel Hardening Remediation...")
+        res = apply_remediation(dry_run=args.dry_run)
+        if res.get("status") in ("dry_run", "unsupported_platform"):
+            if res.get("status") == "unsupported_platform":
+                print(f"[*] Platform '{res.get('platform')}' detected. Previewing Linux server hardening profile:")
+            else:
+                print("[+] Dry-run plan:")
+            for p in res.get("planned_changes", []):
+                print(f"    [MOD] {p['param']}: {p['current']} -> {p['target']} ({p['description']})")
+            print(f"[+] Total compliant: {res.get('compliant_count')}/{res.get('total_checked')}")
+            print("\n--- Generated Profile Preview (/etc/sysctl.d/99-sentinel-hardening.conf) ---")
+            print(res.get("conf_preview", "").strip())
+            print("------------------------------------------------------------------------------\n")
+        elif res.get("status") == "applied":
+            print(f"[+] Successfully applied {res.get('applied_count')} kernel hardening mitigations.")
+            for param in res.get("applied_params", []):
+                print(f"    [OK] {param}")
+            if res.get("conf_path"):
+                print(f"[+] Configuration written to {res.get('conf_path')}")
+        else:
+            print(f"[!] Remediation status: {res.get('status')} {res.get('error', '')}")
+        if not args.targets and not args.server_audit:
+            return 0
+
+    if args.install_systemd:
+        unit = generate_systemd_unit()
+        if sys.platform.startswith("linux"):
+            res = install_systemd_service(unit)
+            print(f"[+] Systemd installation: {res}")
+        else:
+            print("[*] Generated systemd unit preview (Linux only):\n")
+            print(unit)
+        if not args.targets and not args.server_audit:
+            return 0
 
     if args.canary_init:
         import hashlib
@@ -50,6 +97,27 @@ def main(argv=None) -> int:
     if not targets:
         ap.error("the following arguments are required: targets (or specify --server-audit)")
 
+    if args.honeyport_listen:
+        server = HoneyportServer()
+        server.start()
+        print(f"[+] Active honeyport listeners started on ports {server.ports}")
+
+    if args.daemon:
+        tg_tok = args.telegram_token or os.environ.get("TELEGRAM_BOT_TOKEN")
+        tg_cid = args.telegram_chat_id or os.environ.get("TELEGRAM_CHAT_ID")
+        slack_wh = args.slack_webhook or os.environ.get("SLACK_WEBHOOK_URL")
+        run_daemon_loop(
+            orch=orch,
+            targets=targets,
+            interval=args.interval,
+            stages=stages,
+            report_path=args.report,
+            telegram_token=tg_tok,
+            telegram_chat_id=tg_cid,
+            slack_webhook=slack_wh,
+        )
+        return 0
+
     findings = orch.run(targets, stages=stages)
 
     if args.diff:
@@ -64,13 +132,19 @@ def main(argv=None) -> int:
         with open(args.out, "w", encoding="utf-8") as fh:
             json.dump(findings, fh, indent=2)
 
+    if args.sarif:
+        sarif_doc = findings_to_sarif(findings, run_title=" · ".join(targets[:3]))
+        with open(args.sarif, "w", encoding="utf-8") as fh:
+            json.dump(sarif_doc, fh, indent=2)
+        print(f"[+] SARIF export written to {args.sarif}")
+
     if args.report:
-        html = render(findings, title=" · ".join(args.targets[:3]))
+        html = render(findings, title=" · ".join(targets[:3]))
         with open(args.report, "w", encoding="utf-8") as fh:
             fh.write(html)
 
     if args.notify:
-        digest = format_digest(findings, title=" · ".join(args.targets[:3]))
+        digest = format_digest(findings, title=" · ".join(targets[:3]))
         tg_tok = args.telegram_token or os.environ.get("TELEGRAM_BOT_TOKEN")
         tg_cid = args.telegram_chat_id or os.environ.get("TELEGRAM_CHAT_ID")
         slack_wh = args.slack_webhook or os.environ.get("SLACK_WEBHOOK_URL")
