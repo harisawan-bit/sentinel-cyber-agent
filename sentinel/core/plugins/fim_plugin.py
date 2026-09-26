@@ -12,6 +12,7 @@ import hashlib, json, os, stat, sys
 from typing import Iterator, Dict, Any, List
 from ..plugin import Plugin
 from ..models import Finding, FindingType, Severity
+from ..paths import ensure_state_dir, state_path
 
 CRITICAL_PATHS = [
     "/etc/passwd",
@@ -32,7 +33,7 @@ PERSISTENCE_DIRS = [
     "/var/spool/cron/crontabs",
 ]
 
-FIM_BASELINE_PATH = os.path.expanduser("~/.sentinel/fim_baseline.json")
+FIM_BASELINE_NAME = "fim_baseline.json"
 
 
 def _hash_file(path: str) -> str | None:
@@ -111,11 +112,12 @@ class FimPlugin(Plugin):
             )
 
     def _audit_file_integrity(self, target: str) -> Iterator[Finding]:
-        os.makedirs(os.path.dirname(FIM_BASELINE_PATH), exist_ok=True)
+        baseline = state_path(FIM_BASELINE_NAME)
+        ensure_state_dir()
         baseline = {}
-        if os.path.exists(FIM_BASELINE_PATH):
+        if os.path.exists(baseline):
             try:
-                with open(FIM_BASELINE_PATH, "r", encoding="utf-8") as f:
+                with open(baseline, "r", encoding="utf-8") as f:
                     baseline = json.load(f)
             except Exception:
                 baseline = {}
@@ -150,7 +152,7 @@ class FimPlugin(Plugin):
         # Update and save baseline
         baseline.update(current_hashes)
         try:
-            with open(FIM_BASELINE_PATH, "w", encoding="utf-8") as f:
+            with open(state_path(FIM_BASELINE_NAME), "w", encoding="utf-8") as f:
                 json.dump(baseline, f, indent=2)
         except Exception:
             pass

@@ -2,14 +2,32 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Python: 3.10+](https://img.shields.io/badge/Python-3.10%2B-brightgreen.svg)](https://www.python.org/)
-[![CI: Passing](https://img.shields.io/badge/CI-Passing-success.svg)](.github/workflows/ci.yml)
-[![Memory: <25MB RSS](https://img.shields.io/badge/Memory-%3C25MB_RSS-orange.svg)](#performance--footprint)
-[![Standard: OASIS SARIF v2.1.0](https://img.shields.io/badge/Standard-OASIS_SARIF_v2.1.0-purple.svg)](#enterprise-sarif--siem-integration)
-[![Framework: MITRE ATT&CK](https://img.shields.io/badge/Framework-MITRE_ATT%26CK-red.svg)](#detection-as-code-sigma-rules--mitre-attck)
+[![CI](https://github.com/harisawan-bit/sentinel-cyber-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/harisawan-bit/sentinel-cyber-agent/actions/workflows/ci.yml)
+[![Zero runtime deps](https://img.shields.io/badge/runtime_deps-0-brightgreen.svg)](#zero-dependency-philosophy)
+[![Standard: OASIS SARIF v2.1.0](https://img.shields.io/badge/Standard-OASIS_SARIF_v2.1.0-purple.svg)](#9-enterprise-sarif--siem-integration)
+[![Framework: MITRE ATT&CK](https://img.shields.io/badge/Framework-MITRE_ATT%26CK-red.svg)](#6-detection-as-code-sigma-rules--mitre-attck)
 
-**Sentinel** is an autonomous, ultra-lightweight cybersecurity defense agent and homelab guardian. Built with an open-core **MIT license** and a zero-dependency standard-library philosophy, Sentinel combines server 0-day exploit mitigations, in-kernel hardening, runtime behavioral anomaly detection, active deception honeyports, cryptographic file integrity monitoring (FIM), CISA KEV / EPSS threat intelligence, and autonomous remediation into a unified platform.
+**Sentinel** is an autonomous cybersecurity defense agent and homelab guardian. Built on an open-core **MIT license** with a zero-dependency standard-library philosophy, Sentinel combines server 0-day exploit mitigations, in-kernel hardening, runtime behavioral anomaly detection, active deception honeyports, cryptographic file integrity monitoring (FIM), CISA KEV / EPSS threat intelligence, and autonomous remediation into a unified platform.
 
-Engineered with an ultra-low memory footprint (~15–25MB RSS), Sentinel runs effortlessly across cloud VPS instances, bare-metal enterprise servers, Raspberry Pis, low-power NAS units, and legacy hardware (Intel Pentium, Core 2 Duo).
+Sentinel runs on cloud VPS instances, bare-metal enterprise servers, Raspberry Pis, low-power NAS units, and legacy hardware. The Python agent holds **~17.5 MB** at idle and peaks at **~35 MB** during a full audit cycle; the optional native C99 daemon holds **1.45 MB**. Both are measured, not estimated:
+
+```bash
+python3 scripts/bench.py
+```
+
+> **Before you run it:** Sentinel is an *active* defensive tool. `sudo sentinel --fix-kernel` writes sysctl config, `sudo sentinel --honeyport-listen` binds privileged ports, and the native daemon auto-drops trapped IPs via iptables when run as root. Read [`SECURITY.md`](SECURITY.md) for the full security model, and always dry-run first.
+
+---
+
+## 📸 Sample Report
+
+A self-contained sample dashboard is committed at
+[`sentinel_report_sample.html`](sentinel_report_sample.html) — open it in any
+browser, no server required. Regenerate it with:
+
+```bash
+python3 scripts/generate_sample_report.py
+```
 
 ---
 
@@ -25,13 +43,27 @@ Engineered with an ultra-low memory footprint (~15–25MB RSS), Sentinel runs ef
   [host_harden]           [process_anomaly]     [honeyport / canary]  [fim_audit]            [--fix-kernel]
   • Full ASLR (va_space=2) • Parent/Child LOLBin • Decoy port traps    • SHA-256 baselines    • Auto sysctl write
   • Userns clone disabled • Web daemon -> Shell • Tripwire canaries   • Cron/systemd audit   • nftables / iptables
-  • BPF / kptr restricted • Reverse shell egress • 0% false positives • Kernel taint audit   • Micro-firewall drops
+  • BPF / kptr restricted • Reverse shell egress • Canary tripwires    • Kernel taint audit   • Micro-firewall drops
 ```
+
+## Zero-Dependency Philosophy
+
+The agent itself imports **nothing outside the Python standard library** — the
+`http-probe` plugin was rewritten from `requests` to `urllib` to keep it that
+way. `sherlock-project` is the single declared dependency and is entirely
+optional: without it, the `sherlock` plugin emits an `info` note and the rest
+of the agent is unaffected. The first-party plugins (`host_harden`,
+`process_anomaly`, `fim_audit`, `lan_scanner`, `http-probe`, `cert_audit`,
+`sigma_rules`, `threat_intel`) need no external engines at all.
+
+Third-party engines are opt-in via `python3 scripts/install_engines.py`, which
+**verifies every download against the upstream SHA-256 release checksum** and
+refuses to install an unverified or unlisted binary.
 
 ### 1. 0-Day Exploit Mitigation & Kernel Hardening (`host_harden`)
 Neutralizes memory corruption and local privilege escalation 0-days at the OS kernel level:
 * **Full ASLR Verification**: Validates `kernel.randomize_va_space = 2` (Stack, Heap, VDSO, and mmap randomization).
-* **Unprivileged User Namespace Lockdown**: Audits `kernel.unprivileged_userns_clone = 0`, neutralizing ~60% of modern Linux local privilege escalation (LPE) exploits.
+* **Unprivileged User Namespace Lockdown**: Audits `kernel.unprivileged_userns_clone = 0`, disabling a common local privilege-escalation primitive. (Disabling userns can break rootless containers — read the caveat in the remediation section.)
 * **Information Leak Prevention**: Enforces `kernel.kptr_restrict = 2` and `kernel.dmesg_restrict = 1` to prevent kernel pointer and crash disclosure.
 * **TOCTOU Filesystem Race Protections**: Verifies `fs.protected_symlinks`, `fs.protected_hardlinks`, `fs.protected_fifos`, and `fs.protected_regular`.
 * **Process Memory Injection Defense**: Validates Yama ptrace scope (`kernel.yama.ptrace_scope = 1`).
@@ -44,13 +76,22 @@ Moves beyond passive scanning to active server defense:
 * **Safe Dry-Run Previews (`--dry-run`)**: Inspects system compliance, calculates drift, and displays full configuration diffs prior to application.
 * **Micro-Firewall Drop Generator**: Automatically synthesizes `nftables`, `iptables`, and `ufw` drop rules to instantly isolate hostile IPs.
 
+> **Caveat — `kernel.unprivileged_userns_clone = 0`.** Disabling unprivileged
+> user namespaces is strong defence against local privilege escalation, but it
+> **breaks rootless containers** (Podman, rootless Docker, some Flatpak and
+> Snap workflows) and sandboxed build tools. If you run rootless containers,
+> do not apply this one parameter blindly. `sentinel --fix-kernel --dry-run`
+> shows the full diff before anything is written; remove the line from
+> `/etc/sysctl.d/99-sentinel-hardening.conf` if it breaks your workload, then
+> re-apply with `sysctl --system`.
+
 ### 3. Runtime Behavioral & Reverse-Shell Anomaly Detection (`process_anomaly`)
 Catches active zero-day post-exploitation in real-time by inspecting `/proc`:
 * **Process Lineage & LOLBin Spawns**: Detects web daemons (`nginx`, `apache2`, `httpd`, `www-data`, `node`, `php-fpm`) or database servers (`mysqld`, `postgres`, `redis-server`) spawning interactive shells (`sh`, `bash`, `dash`) or download tools (`curl`, `wget`, `nc`, `python`).
 * **Dynamic Preload Hijack Audit**: Inspects `/etc/ld.so.preload` for injected dynamic linkers indicative of userland rootkits.
 
 ### 4. Defensive Deception: High-Fidelity Decoy Keys & Burner Sandboxes (`deception`, `honeypot_burner`, `honeyport`, `canary_audit`)
-Provides 100% true-positive breach detection and diverts malicious bots away from host infrastructure:
+Binds listeners on ports that should never receive legitimate traffic, so a connection is a strong breach/recon signal. Treat findings as high-confidence indicators, not proof:
 * **High-Fidelity Honeytokens (`--seed-honeytokens`)**: Synthesizes realistic, non-functional canary credentials:
   * **LLM & AI Keys**: High-entropy canary tokens for OpenAI (`sk-proj-CANARY_...`), Anthropic (`sk-ant-api03-CANARY_...`), and HuggingFace (`hf_CANARY_...`).
   * **Automation & Webhooks**: n8n workflow API keys, encryption secrets, and webhook trigger endpoints.
@@ -135,7 +176,7 @@ sentinel --canary-init
 sudo sentinel --honeyport-listen
 ```
 
-### 5. Native C99 High-Performance Engine (<800KB RAM, 0% CPU)
+### 5. Native C99 Engine (1.45 MB RAM, 21.4 KB binary, 0% idle CPU)
 ```bash
 # Build the native static binary with zero external dependencies
 make
@@ -188,6 +229,17 @@ sentinel 192.168.1.0/24 --stages recon scan --diff --report homelab_report.html
 | `--json` | - | Emits raw JSON findings to stdout |
 | `--out` | `<file>` | Writes JSON findings to file |
 
+### State Directory
+
+Runtime state — canary manifests, FIM baselines, honeyport trips, burner trap
+logs — is written under `~/.sentinel`, created with mode `0700`. Override the
+location with the `SENTINEL_HOME` environment variable, which is useful for
+running isolated audits or keeping CI off your production state:
+
+```bash
+SENTINEL_HOME=/tmp/sentinel-scratch sentinel --server-audit
+```
+
 ---
 
 ## 🏗️ Architecture & Repository Structure
@@ -217,7 +269,7 @@ sentinel/
       threat_intel_plugin.py# Intel — CISA KEV (in-the-wild) & FIRST EPSS exploit prediction scoring
       pkg_audit_plugin.py   # Scan  — Host OS package SBOM extraction -> OSV CVE correlation
       lan_scanner_plugin.py # Recon — Homelab LAN multi-threaded port & service discovery (std socket)
-      cert_audit_plugin.py  # Recon — SSL/TLS certificate validity & expiration auditor (std ssl)
+      cert_audit_plugin.py  # Scan  — SSL/TLS certificate validity & expiration auditor (std ssl)
       crtsh_plugin.py       # OSINT — Certificate Transparency log enumeration (API)
       subfinder_plugin.py   # Recon — projectdiscovery/subfinder (MIT)
       httpx_plugin.py       # Recon — projectdiscovery/httpx (MIT)
@@ -227,7 +279,15 @@ sentinel/
       sherlock_plugin.py    # OSINT — sherlock-project/sherlock (MIT)
       prowler_plugin.py     # Cloud — prowler-cloud/prowler (Apache-2.0)
       sqlmap_external_plugin.py # External — Subprocess-isolated SQLi wrapper (GPL-2.0)
+    paths.py                # State directory resolution (SENTINEL_HOME override)
   cli.py                    # Command-line entry point with full flag suite
+src/
+  sentineld.c               # Optional native C99 engine: honeyports, inotify tripwires,
+                            # /proc audit, JSON-escaped alerting, iptables auto-drop
+scripts/
+  install_engines.py        # Optional engine fetcher (SHA-256 verified, cross-platform)
+  generate_sample_report.py # Regenerates sentinel_report_sample.html
+  bench.py                  # Reproducible memory-footprint measurement
 tests/
   test_core.py              # Test suite for orchestrator, models, and HTML reports
   test_homelab.py           # Test suite for LAN scanner, notifiers, and state diff
@@ -242,6 +302,22 @@ tests/
 ```
 
 ---
+
+## 🤝 Contributing
+
+Bug reports, plugin proposals, and PRs are welcome — see
+[`CONTRIBUTING.md`](CONTRIBUTING.md) for the development setup, the plugin
+contract, and the test-isolation rules. New engines must be permissively
+licensed (or invoked strictly as external subprocesses) to keep the MIT core
+clean.
+
+Please **only scan systems you own or are explicitly authorised to test**.
+
+## 🛡️ Security
+
+Found a vulnerability? Do not open a public issue — see
+[`SECURITY.md`](SECURITY.md) for the private disclosure process, scope, and
+the full security model (including the root-requiring and auto-drop behaviour).
 
 ## 📜 License & Copyleft Isolation
 

@@ -11,6 +11,7 @@ from __future__ import annotations
 import hashlib, json, os, time
 from typing import Iterator, Dict, Any, List
 from ..plugin import Plugin
+from ..paths import state_path
 from ..models import Finding, FindingType, Severity
 
 DEFAULT_CANARY_PATHS = [
@@ -40,8 +41,7 @@ class CanaryAuditPlugin(Plugin):
                 return
 
         # Check for any existing registered canaries or local canary files
-        state_dir = os.path.expanduser("~/.sentinel")
-        canary_manifest = os.path.join(state_dir, "canaries.json")
+        canary_manifest = state_path("canaries.json")
 
         monitored_canaries: List[Dict[str, Any]] = []
         if os.path.isfile(canary_manifest):
@@ -139,7 +139,7 @@ class CanaryAuditPlugin(Plugin):
                 continue
 
         # Audit Burner Sandbox trap interactions
-        burner_log = os.path.expanduser("~/.sentinel/burner_traps.json")
+        burner_log = state_path("burner_traps.json")
         if os.path.isfile(burner_log):
             try:
                 with open(burner_log, "r", encoding="utf-8") as f:

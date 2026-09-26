@@ -1,6 +1,6 @@
 """Command-line entry point."""
 from __future__ import annotations
-import argparse, json, os, sys
+import argparse, json, os, sys, time
 from .core.orchestrator import Orchestrator
 from .core.report import render
 from .core.state import diff_and_update_state

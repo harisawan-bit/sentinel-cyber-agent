@@ -3,21 +3,32 @@ from __future__ import annotations
 import sys, os, tempfile, json, shutil
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from sentinel.core.deception import (
+# Sandbox state BEFORE importing anything that resolves a state path, so the
+# developer's real ~/.sentinel never receives test honeytokens or burner traps.
+_TMP_HOME = tempfile.mkdtemp(prefix="sentinel_test_home_")
+os.environ["SENTINEL_HOME"] = _TMP_HOME
+
+from sentinel.core.paths import state_path  # noqa: E402
+from sentinel.core.deception import (  # noqa: E402
     generate_decoy_credentials,
     render_decoy_env,
     render_decoy_docker_config,
     render_decoy_ssh_key,
     register_canary_file,
     seed_all_honeytokens,
-    CANARY_MANIFEST_PATH,
 )
-from sentinel.core.honeypot_burner import (
+from sentinel.core.honeypot_burner import (  # noqa: E402
     generate_burner_docker_compose,
     _log_burner_event,
-    BURNER_LOG_FILE,
 )
-from sentinel.core.plugins.canary_audit_plugin import CanaryAuditPlugin
+from sentinel.core.plugins.canary_audit_plugin import CanaryAuditPlugin  # noqa: E402
+
+_real_home = os.path.join(os.path.expanduser("~"), ".sentinel")
+
+
+def _cleanup():
+    shutil.rmtree(_TMP_HOME, ignore_errors=True)
+    os.environ.pop("SENTINEL_HOME", None)
 
 
 def test_generate_decoy_credentials():
@@ -85,8 +96,9 @@ def test_seed_honeytokens_and_manifest():
         assert os.path.isfile(ssh_file)
 
         # Check canary manifest was updated
-        assert os.path.isfile(CANARY_MANIFEST_PATH)
-        with open(CANARY_MANIFEST_PATH, "r", encoding="utf-8") as f:
+        manifest_path = state_path("canaries.json")
+        assert os.path.isfile(manifest_path)
+        with open(manifest_path, "r", encoding="utf-8") as f:
             manifest = json.load(f)
         paths = [m["path"] for m in manifest]
         assert os.path.abspath(env_file) in paths
@@ -143,7 +155,7 @@ def test_burner_trap_logging_and_alert():
         remote_port=48123,
         raw_data="USER root PASSWORD hacked"
     )
-    assert os.path.isfile(BURNER_LOG_FILE)
+    assert os.path.isfile(state_path("burner_traps.json"))
 
     plugin = CanaryAuditPlugin()
     findings = list(plugin.run("localhost", None))
@@ -155,17 +167,32 @@ def test_burner_trap_logging_and_alert():
     assert "iptables -I INPUT -s 203.0.113.195 -j DROP" in burner_finding.metadata["iptables_ban"]
 
 
+def test_no_state_leaks_to_real_home():
+    """Regression: burner traps and canaries must stay in SENTINEL_HOME."""
+    if os.path.isdir(_real_home):
+        for f in os.listdir(_real_home):
+            body = open(os.path.join(_real_home, f), errors="ignore").read()
+            assert "203.0.113.195" not in body, f"burner trap leaked to {f}"
+            assert "198.51.100.99" not in body, f"honeyport trip leaked to {f}"
+            assert ".canary" not in body, f"canary manifest leaked to {f}"
+
+
 if __name__ == "__main__":
-    test_generate_decoy_credentials()
-    print("PASS test_generate_decoy_credentials")
-    test_render_decoy_configs()
-    print("PASS test_render_decoy_configs")
-    test_seed_honeytokens_and_manifest()
-    print("PASS test_seed_honeytokens_and_manifest")
-    test_canary_tampering_detection()
-    print("PASS test_canary_tampering_detection")
-    test_burner_docker_compose_generation()
-    print("PASS test_burner_docker_compose_generation")
-    test_burner_trap_logging_and_alert()
-    print("PASS test_burner_trap_logging_and_alert")
-    print("ALL DECEPTION TESTS PASSED")
+    try:
+        test_generate_decoy_credentials()
+        print("PASS test_generate_decoy_credentials")
+        test_render_decoy_configs()
+        print("PASS test_render_decoy_configs")
+        test_seed_honeytokens_and_manifest()
+        print("PASS test_seed_honeytokens_and_manifest")
+        test_canary_tampering_detection()
+        print("PASS test_canary_tampering_detection")
+        test_burner_docker_compose_generation()
+        print("PASS test_burner_docker_compose_generation")
+        test_burner_trap_logging_and_alert()
+        print("PASS test_burner_trap_logging_and_alert")
+        test_no_state_leaks_to_real_home()
+        print("PASS test_no_state_leaks_to_real_home")
+        print("ALL DECEPTION TESTS PASSED")
+    finally:
+        _cleanup()

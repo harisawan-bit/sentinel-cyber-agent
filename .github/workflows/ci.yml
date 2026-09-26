@@ -6,6 +6,9 @@ on:
   pull_request:
     branches: [ main ]
 
+permissions:
+  contents: read
+
 jobs:
   test:
     name: Test (Python ${{ matrix.python-version }})
@@ -30,20 +33,69 @@ jobs:
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
           pip install pytest
 
+      # The suite is plain `python`, not pytest, so it runs on any interpreter.
+      # Test files sandbox SENTINEL_HOME themselves; the extra export below is
+      # a belt-and-braces guard so a leak can never touch the runner's home.
       - name: Run unit tests
+        env:
+          SENTINEL_HOME: ${{ runner.temp }}/sentinel-ci-state
         run: |
-          python tests/test_core.py
-          python tests/test_homelab.py
-          python tests/test_server_defense.py
-          python tests/test_remediation.py
-          python tests/test_sarif.py
-          python tests/test_daemon.py
-          python tests/test_honeyport.py
-          python tests/test_fim.py
-          python tests/test_sigma.py
-          python tests/test_deception.py
+          for t in tests/test_*.py; do
+            echo "::group::$t"
+            python "$t"
+            echo "::endgroup::"
+          done
+
+      - name: Run tests under pytest
+        env:
+          SENTINEL_HOME: ${{ runner.temp }}/sentinel-ci-state-pytest
+        run: python -m pytest tests/ -q
+
+      - name: Verify the state directory was not polluted
+        env:
+          SENTINEL_HOME: ${{ runner.temp }}/sentinel-ci-state
+        run: |
+          if [ -e "$HOME/.sentinel" ]; then
+            echo "::error::tests wrote to the real ~/.sentinel"
+            ls -la "$HOME/.sentinel"
+            exit 1
+          fi
+
+      - name: Verify zero third-party imports in the agent core
+        run: |
+          python - <<'PY'
+          import ast, os, sys
+          std = set(sys.stdlib_module_names)
+          offenders = []
+          for root, _, files in os.walk("sentinel"):
+              for f in files:
+                  if not f.endswith(".py"):
+                      continue
+                  path = os.path.join(root, f)
+                  tree = ast.parse(open(path, encoding="utf-8").read())
+                  for node in ast.walk(tree):
+                      mods = []
+                      if isinstance(node, ast.Import):
+                          mods = [a.name.split(".")[0] for a in node.names]
+                      elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
+                          mods = [node.module.split(".")[0]]
+                      for m in mods:
+                          if m not in std and m != "sentinel":
+                              offenders.append(f"{path}: {m}")
+          if offenders:
+              print("::error::undeclared third-party imports in the agent core")
+              for o in offenders:
+                  print("  " + o)
+              sys.exit(1)
+          print("agent core is standard-library only")
+          PY
 
       - name: Build and test native C99 daemon
         run: |
           make
           make test
+
+      - name: Build with strict warnings
+        run: |
+          gcc -O3 -Wall -Wextra -Werror -std=c99 -c src/sentineld.c -o /dev/null
+          echo "no warnings under -Wall -Wextra -Werror"

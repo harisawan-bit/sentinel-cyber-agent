@@ -6,9 +6,59 @@ Finding objects in the shared model. Useful as a baseline even when the
 projectdiscovery binaries are not installed.
 """
 from __future__ import annotations
-import re, socket, ssl, subprocess, sys
+import re, socket, ssl, subprocess, sys, urllib.error, urllib.request
 from ..plugin import Plugin
 from ..models import Finding, FindingType, Severity
+
+_UA = "Sentinel/2.4.0 (+recon)"
+
+
+class _Resp:
+    """Minimal response shim so we keep the requests-like field access below."""
+
+    __slots__ = ("status_code", "headers", "text")
+
+    def __init__(self, status_code: int, headers: dict, text: str):
+        self.status_code = status_code
+        self.headers = _CaseInsensitive(headers)
+        self.text = text
+
+
+class _CaseInsensitive(dict):
+    """HTTP header map with case-insensitive lookup (RFC 9110 field names)."""
+
+    def __init__(self, items: dict):
+        super().__init__({str(k).lower(): v for k, v in items.items()})
+
+    def get(self, key, default=None):
+        return super().get(str(key).lower(), default)
+
+    def __getitem__(self, key):
+        return super().__getitem__(str(key).lower())
+
+
+def _http_get(url: str, timeout: int = 15) -> _Resp:
+    """GET without following redirects, using only the standard library.
+
+    urllib raises HTTPError for 4xx/5xx; those are legitimate recon results
+    here, so they are converted into responses rather than exceptions.
+    """
+    req = urllib.request.Request(url, headers={"User-Agent": _UA})
+    opener = urllib.request.build_opener(_NoRedirect)
+    try:
+        with opener.open(req, timeout=timeout) as r:
+            raw = r.read(200_000)
+            return _Resp(r.status, dict(r.headers), raw.decode("utf-8", "ignore"))
+    except urllib.error.HTTPError as e:
+        raw = e.read(200_000) if hasattr(e, "read") else b""
+        return _Resp(e.code, dict(e.headers or {}), raw.decode("utf-8", "ignore"))
+
+
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    """Surface 3xx as a status code instead of silently following the chain."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
 
 
 class HttpProbePlugin(Plugin):
@@ -48,11 +98,9 @@ class HttpProbePlugin(Plugin):
             return
 
         for scheme in ("https", "http"):
-            import requests
             url = f"{scheme}://{host}"
             try:
-                r = requests.get(url, timeout=15, allow_redirects=False,
-                                 headers={"User-Agent": "Sentinel/0.1 (+recon)"})
+                r = _http_get(url, timeout=15)
             except Exception as e:
                 yield Finding(tool=self.name, finding_type="note",
                               value=f"{scheme} probe error: {e}",

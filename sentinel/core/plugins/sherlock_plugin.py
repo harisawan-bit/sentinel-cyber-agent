@@ -18,7 +18,7 @@ class SherlockPlugin(Plugin):
     name = "sherlock"
     description = "Username presence across sites (sherlock-project/sherlock, MIT)"
     stage = "osint"
-    requires = ["sherlock"]
+    requires = []  # invoked as `python -m sherlock_project.sherlock`, not a standalone binary
 
     def run(self, target, ctx):
         outdir = tempfile.mkdtemp(prefix="sentinel_sherlock_")
