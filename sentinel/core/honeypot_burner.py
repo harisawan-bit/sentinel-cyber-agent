@@ -11,7 +11,9 @@ from __future__ import annotations
 import json, os, socket, threading, time
 from typing import Dict, Any, List, Optional, Tuple
 
-BURNER_LOG_FILE = os.path.expanduser("~/.sentinel/burner_traps.json")
+from .paths import ensure_state_dir, state_path
+
+BURNER_LOG_NAME = "burner_traps.json"
 
 
 def generate_burner_docker_compose(
@@ -72,11 +74,12 @@ networks:
 
 def _log_burner_event(service: str, remote_ip: str, remote_port: int, raw_data: str) -> None:
     """Record interactions with burner trap endpoints."""
-    os.makedirs(os.path.dirname(BURNER_LOG_FILE), exist_ok=True)
+    log_file = state_path(BURNER_LOG_NAME)
+    ensure_state_dir()
     events = []
-    if os.path.exists(BURNER_LOG_FILE):
+    if os.path.exists(log_file):
         try:
-            with open(BURNER_LOG_FILE, "r", encoding="utf-8") as f:
+            with open(log_file, "r", encoding="utf-8") as f:
                 events = json.load(f)
         except Exception:
             events = []
@@ -90,7 +93,7 @@ def _log_burner_event(service: str, remote_ip: str, remote_port: int, raw_data: 
     })
     events = events[-100:]
     try:
-        with open(BURNER_LOG_FILE, "w", encoding="utf-8") as f:
+        with open(log_file, "w", encoding="utf-8") as f:
             json.dump(events, f, indent=2)
     except Exception:
         pass

@@ -11,18 +11,20 @@ import json, os, socket, threading, time
 from typing import Iterator, Dict, Any, List
 from ..plugin import Plugin
 from ..models import Finding, FindingType, Severity
+from ..paths import ensure_state_dir, state_path
 
 DEFAULT_HONEY_PORTS = [23, 445, 2375, 8888]
-TRIPWIRE_LOG_FILE = os.path.expanduser("~/.sentinel/honeyport_trips.json")
+TRIPWIRE_LOG_NAME = "honeyport_trips.json"
 
 
 def _record_trip(attacker_ip: str, port: int, payload_preview: str) -> None:
     """Persist tripped honeyport event to local state."""
-    os.makedirs(os.path.dirname(TRIPWIRE_LOG_FILE), exist_ok=True)
+    log_file = state_path(TRIPWIRE_LOG_NAME)
+    ensure_state_dir()
     events = []
-    if os.path.exists(TRIPWIRE_LOG_FILE):
+    if os.path.exists(log_file):
         try:
-            with open(TRIPWIRE_LOG_FILE, "r", encoding="utf-8") as f:
+            with open(log_file, "r", encoding="utf-8") as f:
                 events = json.load(f)
         except Exception:
             events = []
@@ -36,7 +38,7 @@ def _record_trip(attacker_ip: str, port: int, payload_preview: str) -> None:
     # Keep last 100 trips
     events = events[-100:]
     try:
-        with open(TRIPWIRE_LOG_FILE, "w", encoding="utf-8") as f:
+        with open(log_file, "w", encoding="utf-8") as f:
             json.dump(events, f, indent=2)
     except Exception:
         pass
@@ -117,9 +119,10 @@ class HoneyportPlugin(Plugin):
                 return
 
         # Check tripped honeyport events
-        if os.path.exists(TRIPWIRE_LOG_FILE):
+        log_file = state_path(TRIPWIRE_LOG_NAME)
+        if os.path.exists(log_file):
             try:
-                with open(TRIPWIRE_LOG_FILE, "r", encoding="utf-8") as f:
+                with open(log_file, "r", encoding="utf-8") as f:
                     trips = json.load(f)
             except Exception:
                 trips = []

@@ -18,6 +18,11 @@
 #include <time.h>
 #include <errno.h>
 #include <sys/stat.h>
+#ifndef _WIN32
+  #include <sys/types.h>
+  #include <sys/wait.h>
+  #include <unistd.h>
+#endif
 
 #ifdef _WIN32
   #include <windows.h>
@@ -125,25 +130,77 @@ static void gen_hex(char *buf, size_t len) {
     buf[len] = '\0';
 }
 
+/* Emit a JSON string body, escaping per RFC 8259. Attacker-controlled bytes
+   (a /proc cmdline, a canary filename) reach this, so unescaped quoting
+   would corrupt sentinel_events.jsonl. */
+static void json_escape(const char *in, char *out, size_t outlen) {
+    size_t o = 0;
+    if (!in) { if (outlen) out[0] = '\0'; return; }
+    for (size_t i = 0; in[i] && o + 7 < outlen; i++) {
+        unsigned char c = (unsigned char)in[i];
+        switch (c) {
+            case '"':  out[o++] = '\\'; out[o++] = '"';  break;
+            case '\\': out[o++] = '\\'; out[o++] = '\\'; break;
+            case '\n': out[o++] = '\\'; out[o++] = 'n';  break;
+            case '\r': out[o++] = '\\'; out[o++] = 'r';  break;
+            case '\t': out[o++] = '\\'; out[o++] = 't';  break;
+            default:
+                if (c < 0x20) {
+                    o += (size_t)snprintf(out + o, outlen - o, "\\u%04x", c);
+                } else {
+                    out[o++] = (char)c;
+                }
+        }
+    }
+    out[o] = '\0';
+}
+
+/* Run argv[] directly — no shell, so no metacharacter interpretation. */
+#ifndef _WIN32
+static int run_argv(char *const argv[]) {
+    pid_t pid = fork();
+    if (pid < 0) return -1;
+    if (pid == 0) {
+        int devnull = open("/dev/null", O_WRONLY);
+        if (devnull >= 0) { dup2(devnull, STDOUT_FILENO); dup2(devnull, STDERR_FILENO); }
+        execvp(argv[0], argv);
+        _exit(127);
+    }
+    int status = 0;
+    if (waitpid(pid, &status, 0) < 0) return -1;
+    return (WIFEXITED(status) && WEXITSTATUS(status) == 0) ? 0 : -1;
+}
+#endif
+
 static void log_alert(const char *type, const char *src_ip, int port, const char *detail) {
     time_t now = time(NULL);
+    const char *ip = (src_ip && src_ip[0]) ? src_ip : "local";
+    char e_type[128], e_ip[128], e_detail[1024];
+    json_escape(type, e_type, sizeof(e_type));
+    json_escape(ip, e_ip, sizeof(e_ip));
+    json_escape(detail, e_detail, sizeof(e_detail));
+
     printf("{\"ts\":%lld,\"severity\":\"CRITICAL\",\"type\":\"%s\",\"ip\":\"%s\",\"port\":%d,\"detail\":\"%s\"}\n",
-           (long long)now, type, src_ip ? src_ip : "local", port, detail);
+           (long long)now, e_type, e_ip, port, e_detail);
     fflush(stdout);
 
     FILE *fp = fopen("sentinel_events.jsonl", "a");
     if (fp) {
         fprintf(fp, "{\"ts\":%lld,\"severity\":\"CRITICAL\",\"type\":\"%s\",\"ip\":\"%s\",\"port\":%d,\"detail\":\"%s\"}\n",
-                (long long)now, type, src_ip ? src_ip : "local", port, detail);
+                (long long)now, e_type, e_ip, port, e_detail);
         fclose(fp);
     }
 #ifndef _WIN32
-    /* ponytail: direct iptables drop when running as root on Linux */
+    /* Auto-drop a hostile IP without invoking a shell. execvp takes the IP as
+       a discrete argv element, so nothing in it can be interpreted. */
     if (src_ip && strcmp(src_ip, "127.0.0.1") != 0 && geteuid() == 0) {
-        char cmd[128];
-        snprintf(cmd, sizeof(cmd), "iptables -I INPUT -s %15s -j DROP 2>/dev/null", src_ip);
-        if (system(cmd) == 0) {
-            printf("[+] AUTO-BANNED hostile IP via iptables: %s\n", src_ip);
+        char target[INET_ADDRSTRLEN];
+        if (inet_pton(AF_INET, src_ip, &(struct in_addr){0}) == 1) {
+            snprintf(target, sizeof(target), "%s", src_ip);
+            char *argv[] = {"iptables", "-I", "INPUT", "-s", target, "-j", "DROP", NULL};
+            if (run_argv(argv) == 0) {
+                printf("[+] AUTO-BANNED hostile IP via iptables: %s\n", src_ip);
+            }
         }
     }
 #endif
@@ -217,7 +274,8 @@ static int audit_host(int fix_kernel) {
             fprintf(cf, "kernel.randomize_va_space = 2\nkernel.kptr_restrict = 2\n"
                         "kernel.dmesg_restrict = 1\nfs.protected_symlinks = 1\nfs.protected_hardlinks = 1\n");
             fclose(cf);
-            if (system("sysctl --system >/dev/null 2>&1") == 0)
+            char *sargv[] = {"sysctl", "--system", NULL};
+            if (run_argv(sargv) == 0)
                 printf("[+] Applied kernel 0-day hardening profile.\n");
         }
     }
