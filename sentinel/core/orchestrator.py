@@ -1,8 +1,9 @@
 """Plugin discovery + pipeline orchestration."""
 from __future__ import annotations
-import importlib, pkgutil, traceback
+import importlib, os, pkgutil, shutil, traceback
 from typing import Dict, List, Optional, Any
 
+from .config import bin_path
 from .models import Finding
 from .plugin import Plugin
 
@@ -33,8 +34,28 @@ class Orchestrator:
                     and issubclass(obj, Plugin)
                     and obj is not Plugin
                 ):
-                    inst = obj()
+                    try:
+                        inst = obj()
+                    except Exception:
+                        continue
                     self.plugins[inst.name] = inst
+
+    def missing_requirements(self, name: str) -> List[str]:
+        """Return the external binaries a plugin needs that are not installed.
+
+        Plugin.requires was declared by every engine-backed plugin but never
+        consulted, so a missing binary surfaced as an opaque "plugin error"
+        note. The orchestrator now checks it up front and skips the plugin
+        with a clear reason.
+        """
+        plugin = self.plugins.get(name)
+        if plugin is None:
+            return []
+        missing = []
+        for binary in plugin.requires:
+            if shutil.which(binary) is None and not os.path.isfile(bin_path(binary)):
+                missing.append(binary)
+        return missing
 
     def run(self, targets: List[str], stages: Optional[set] = None) -> List[Dict[str, Any]]:
         findings: List[Dict[str, Any]] = []
@@ -47,6 +68,22 @@ class Orchestrator:
         for target in targets:
             for name, p in sorted_plugins:
                 if stages and p.stage not in stages:
+                    continue
+                # Engine-backed plugins are skipped with a clear reason when
+                # their binary is absent, rather than failing opaquely.
+                missing = self.missing_requirements(name)
+                if missing:
+                    findings.append(
+                        Finding(
+                            tool=name, finding_type="note",
+                            value=f"{name} skipped: missing {', '.join(missing)}",
+                            target=target, severity="info",
+                            detail=(
+                                f"Plugin '{name}' requires {', '.join(missing)}. "
+                                f"Run scripts/install_engines.py or install manually."
+                            ),
+                        ).to_dict()
+                    )
                     continue
                 try:
                     for f in p.run(target, self):

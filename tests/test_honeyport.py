@@ -1,9 +1,28 @@
-"""Unit tests for Sentinel Active Deception Honeyports."""
+"""Unit tests for Sentinel Active Deception Honeyports.
+
+Runs against a throwaway SENTINEL_HOME so the developer's real ~/.sentinel
+is never written to. Honeyport trips are real breach indicators — leaking
+test fixtures into that directory makes the next real audit report a
+phantom CRITICAL.
+"""
 from __future__ import annotations
-import sys, os
+import sys, os, tempfile
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from sentinel.core.plugins.honeyport_plugin import HoneyportPlugin, _record_trip, TRIPWIRE_LOG_FILE
+# Sandbox BEFORE importing anything that resolves a state path.
+_TMP_HOME = tempfile.mkdtemp(prefix="sentinel_test_home_")
+os.environ["SENTINEL_HOME"] = _TMP_HOME
+
+from sentinel.core.paths import state_path  # noqa: E402
+from sentinel.core.plugins.honeyport_plugin import HoneyportPlugin, _record_trip  # noqa: E402
+
+_real_home = os.path.join(os.path.expanduser("~"), ".sentinel")
+
+
+def _cleanup():
+    import shutil
+    shutil.rmtree(_TMP_HOME, ignore_errors=True)
+    os.environ.pop("SENTINEL_HOME", None)
 
 
 def test_honeyport_plugin_instantiation():
@@ -29,9 +48,26 @@ def test_honeyport_record_trip():
     assert "iptables -I INPUT -s 198.51.100.99 -j DROP" in trip_f.metadata["iptables_ban"]
 
 
+def test_tests_do_not_touch_real_home():
+    """Regression: state must land in SENTINEL_HOME, never ~/.sentinel."""
+    assert state_path("honeyport_trips.json").startswith(_TMP_HOME)
+    assert os.path.isfile(os.path.join(_TMP_HOME, "honeyport_trips.json"))
+    if os.path.isdir(_real_home):
+        leaked = [
+            f for f in os.listdir(_real_home)
+            if "198.51.100.99" in open(os.path.join(_real_home, f), errors="ignore").read()
+        ]
+        assert not leaked, f"test fixtures leaked into real state dir: {leaked}"
+
+
 if __name__ == "__main__":
-    test_honeyport_plugin_instantiation()
-    print("PASS test_honeyport_plugin_instantiation")
-    test_honeyport_record_trip()
-    print("PASS test_honeyport_record_trip")
-    print("ALL HONEYPORT TESTS PASSED")
+    try:
+        test_honeyport_plugin_instantiation()
+        print("PASS test_honeyport_plugin_instantiation")
+        test_honeyport_record_trip()
+        print("PASS test_honeyport_record_trip")
+        test_tests_do_not_touch_real_home()
+        print("PASS test_tests_do_not_touch_real_home")
+        print("ALL HONEYPORT TESTS PASSED")
+    finally:
+        _cleanup()

@@ -1,0 +1,12 @@
+# The sample report is build output from scripts/generate_sample_report.py,
+# not hand-written source. Excluding it keeps the language breakdown honest:
+# the agent is Python, plus a small optional C99 daemon.
+sentinel_report_sample.html linguist-generated=true
+
+# Normalise line endings.
+* text=auto eol=lf
+
+# Keep shell/C/Makefile out of diff noise on Windows checkouts.
+*.sh text eol=lf
+*.c   text eol=lf
+Makefile text eol=lf

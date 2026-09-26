@@ -7,14 +7,16 @@ Generates realistic decoy credentials and configuration files:
 - Docker registry authentication configs
 - Remote access SSH canary keys pointing to isolated burner traps
 
-Registers generated canary files in ~/.sentinel/canaries.json for active
+Registers generated canary files in <state dir>/canaries.json for active
 tamper and read access monitoring by CanaryAuditPlugin.
 """
 from __future__ import annotations
 import hashlib, json, os, secrets, time
 from typing import Dict, Any, List, Tuple
 
-CANARY_MANIFEST_PATH = os.path.expanduser("~/.sentinel/canaries.json")
+from .paths import ensure_state_dir, state_path
+
+CANARY_MANIFEST_NAME = "canaries.json"
 
 
 def _generate_synthetic_token(prefix: str, length: int = 32) -> str:
@@ -132,12 +134,13 @@ def render_decoy_ssh_key() -> Tuple[str, str]:
 
 def register_canary_file(file_path: str, category: str = "generic") -> Dict[str, Any]:
     """Register a file in ~/.sentinel/canaries.json with cryptographic baseline."""
-    os.makedirs(os.path.dirname(CANARY_MANIFEST_PATH), exist_ok=True)
+    manifest_path = state_path(CANARY_MANIFEST_NAME)
+    ensure_state_dir()
     manifest: List[Dict[str, Any]] = []
 
-    if os.path.exists(CANARY_MANIFEST_PATH):
+    if os.path.exists(manifest_path):
         try:
-            with open(CANARY_MANIFEST_PATH, "r", encoding="utf-8") as f:
+            with open(manifest_path, "r", encoding="utf-8") as f:
                 manifest = json.load(f)
         except Exception:
             manifest = []
@@ -162,7 +165,7 @@ def register_canary_file(file_path: str, category: str = "generic") -> Dict[str,
     }
     manifest.append(entry)
 
-    with open(CANARY_MANIFEST_PATH, "w", encoding="utf-8") as f:
+    with open(manifest_path, "w", encoding="utf-8") as f:
         json.dump(manifest, f, indent=2)
 
     return entry
