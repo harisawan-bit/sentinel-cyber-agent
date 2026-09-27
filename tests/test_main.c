@@ -625,6 +625,48 @@ static void test_regressions(void)
             proc_run(rm, NULL, 0, 30);
         }
     }
+
+    /* 8. FIM's three audits were called only from inside #if defined(__linux__),
+     *    which left them unreferenced on macOS, where clang rejects unused
+     *    static functions under -Werror. The same shape hid two checks in
+     *    host_harden and two in process_anomaly. A build-time property, so it
+     *    is checked by compiling rather than by running. */
+    {
+        const char *files[] = {
+            "src/plugins/fim.c", "src/plugins/host_harden.c",
+            "src/plugins/process_anomaly.c", NULL
+        };
+        int all_ok = 1;
+        for (int i = 0; files[i]; i++) {
+            /* argv, never a shell string: the file list is ours, but the rule
+             * exists so it stays true when someone edits this test later. */
+            char *argv[] = { "gcc", "-O2", "-Wall", "-Wextra", "-Werror",
+                             "-std=c99", "-Iinclude", "-D_POSIX_C_SOURCE=200809L",
+                             "-D__APPLE__=1", "-U__linux__", "-Ulinux",
+                             "-U__gnu_linux__", "-c", (char *)files[i],
+                             "-o", "/dev/null", NULL };
+            if (proc_run(argv, NULL, 0, 120) != 0) all_ok = 0;
+        }
+        check("Linux-only plugins compile with __linux__ removed", all_ok);
+    }
+
+    /* 9. The drift guard: a target seen for the first time must not be reported
+     *    as drift. Covered above; this asserts the plugin registry is intact
+     *    after the platform-guard edits, which is what those edits could break. */
+    {
+        size_t n = 0;
+        const plugin_t *list = sentinel_plugin_list(&n);
+        check("the plugin registry is populated", list != NULL && n >= 19);
+        if (list) {
+            int named = 1, runnable = 1;
+            for (size_t i = 0; i < n; i++) {
+                if (!list[i].name || !*list[i].name) named = 0;
+                if (!list[i].run) runnable = 0;
+            }
+            check("every plugin has a non-empty name", named);
+            check("every plugin has a run function", runnable);
+        }
+    }
 }
 
 int main(void)

@@ -11,8 +11,9 @@ COPY . .
 # Reproducible: no timestamps or paths baked into the binary.
 RUN make all
 
-# Prove the binaries work in the image before shipping them.
-RUN cd /tmp && SENTINEL_HOME=/tmp/st ./src/bin/sentinel localhost --stages audit --out /tmp/o.json
+# Prove the binaries work in the image before shipping them. Use absolute
+# paths: a relative one breaks the moment the RUN changes directory.
+RUN SENTINEL_HOME=/tmp/st /src/bin/sentinel localhost --stages audit --out /tmp/o.json
 RUN /src/bin/sentineld --self-test
 
 FROM debian:bookworm-slim
@@ -21,7 +22,8 @@ RUN apt-get update -qq && \
     apt-get install -y -qq --no-install-recommends \
         libssl3 ca-certificates && \
     rm -rf /var/lib/apt/lists/* && \
-    useradd --system --create-home --home-dir /home/sentinel --shell /usr/sbin/nologin sentinel
+    useradd --system --create-home --home-dir /home/sentinel --shell /usr/sbin/nologin sentinel && \
+    mkdir -p /var/lib/sentinel && chown sentinel:sentinel /var/lib/sentinel
 
 COPY --from=build /src/bin/sentinel  /usr/local/bin/sentinel
 COPY --from=build /src/bin/sentineld /usr/local/bin/sentineld

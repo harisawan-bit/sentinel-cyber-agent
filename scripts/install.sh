@@ -111,6 +111,10 @@ if [ -w "$DEST" ]; then
     install -m 0755 "$BINDIR/sentineld-static" "$DEST/sentineld-static"
     log "installed $DEST/sentineld-static (musl, no shared library dependencies)"
   fi
+  if [ -x "$BINDIR/sentinel-static" ]; then
+    install -m 0755 "$BINDIR/sentinel-static" "$DEST/sentinel-static"
+    log "installed $DEST/sentinel-static (fully static; copy it anywhere)"
+  fi
 else
   warn "$DEST is not writable. Re-run with sudo, or set PREFIX to a directory you own:"
   warn "  sudo PREFIX=/usr/local ./scripts/install.sh"

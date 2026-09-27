@@ -37,12 +37,12 @@ jobs:
           "$GITHUB_WORKSPACE/bin/sentinel" localhost --stages audit --out out.json
           test -s out.json
 
-      - name: Build the static musl daemon
+      - name: Build the static binaries
         run: |
           sudo apt-get install -y -qq musl-tools
-          make static
-          ./bin/sentineld --self-test
-          make all   # restore the dynamic build for the rest of the package
+          make static          # musl, for the resident daemon
+          make static-agent    # glibc static, for the TLS-capable agent
+          make all             # restore the dynamic build for packaging
 
       - name: Package
         run: |
@@ -58,6 +58,7 @@ jobs:
           install -m 0755 bin/sentineld         staging/
           # A static daemon is what makes the "drop it on a box" story real.
           install -m 0755 bin/sentineld         staging/sentineld-static
+          install -m 0755 bin/sentinel-static   staging/sentinel-static
           install -m 0755 scripts/install.sh    staging/
           install -m 0644 README.md LICENSE SECURITY.md CHANGELOG.md staging/
 
@@ -66,7 +67,8 @@ jobs:
 
           # A release must not ship a partial archive.
           missing=""
-          for f in sentinel sentineld sentineld-static install.sh README.md LICENSE; do
+          for f in sentinel sentineld sentineld-static sentinel-static \
+                   install.sh README.md LICENSE; do
             tar tzf dist/sentinel-linux-amd64.tar.gz | grep -qx "./$f" || missing="$missing $f"
           done
           if [ -n "$missing" ]; then

@@ -73,6 +73,17 @@ check: all test
 # precisely so it can be made tiny enough to sit resident on a small host.
 STATIC_CFLAGS := -Os -Wall -Wextra -Werror -std=c99 -static -s
 
+# The agent cannot be built against musl: net.c needs OpenSSL and musl
+# toolchains ship no OpenSSL headers, and musl and glibc headers cannot be
+# mixed in one translation unit. A statically linked glibc build does work and
+# is genuinely dependency-free at runtime.
+#
+# One caveat, from the linker: glibc's getaddrinfo and dlopen resolve through
+# NSS modules loaded at runtime, so a static glibc binary needs the host's
+# libnss_* on glibc builds that do not build NSS in. It is verified below by
+# resolving a real hostname before the target is called good.
+STATIC_AGENT_CFLAGS := -O2 -Wall -Wextra -Werror -std=c99 -static -s
+
 static:
 	$(MAKE) clean
 	@mkdir -p bin
@@ -84,7 +95,36 @@ static:
 	    $(CC) $(STATIC_CFLAGS) src/sentineld.c -o $(DAEMON); \
 	fi
 	@ls -la $(DAEMON)
-	@echo "note: the TLS-dependent agent is not built in this mode"
+	@echo "note: build the agent with 'make static-agent'"
+
+# Fully static agent: no shared library dependencies at all.
+#
+# The glibc linker warns that getaddrinfo and dlopen need the host's NSS
+# modules at runtime. That warning is usually harmless on modern glibc, which
+# has NSS built in, but "usually" is not a property to ship, so the target
+# resolves a real hostname before declaring success.
+STATIC_AGENT := bin/sentinel-static
+
+.PHONY: static-agent
+static-agent:
+	@mkdir -p bin
+	$(CC) $(STATIC_AGENT_CFLAGS) $(CPPFLAGS) -o $(STATIC_AGENT) \
+	    src/cli.c $(CORE_SRC) $(PLUG_SRC) src/core/registry.c $(LDLIBS)
+	@ls -la $(STATIC_AGENT)
+	@if ldd $(STATIC_AGENT) >/dev/null 2>&1; then \
+	    echo "[x] $(STATIC_AGENT) still links shared libraries"; \
+	    ldd $(STATIC_AGENT); exit 1; \
+	else echo "[+] no shared library dependencies"; fi
+	@echo "[+] verifying the static agent actually works, including DNS"
+	@tmp=$$(mktemp -d); \
+	SENTINEL_HOME=$$tmp $(STATIC_AGENT) --version; \
+	SENTINEL_HOME=$$tmp $(STATIC_AGENT) example.com --stages recon --out $$tmp/o.json >/dev/null 2>&1 \
+	    || { echo "[x] the static agent could not resolve a hostname"; \
+	         echo "    this host's glibc needs libnss_* at runtime"; exit 1; }; \
+	SENTINEL_HOME=$$tmp $(STATIC_AGENT) localhost --stages audit --out $$tmp/a.json >/dev/null \
+	    || { echo "[x] the static agent could not complete an audit"; exit 1; }; \
+	rm -rf $$tmp; \
+	echo "[+] static agent verified: DNS, TLS, and a full audit"
 
 bench: all
 	@size bin/sentinel bin/sentineld 2>/dev/null || true

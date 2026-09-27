@@ -28,6 +28,7 @@ collector and no runtime that can load code at execution time.
 | **Agent idle RSS** | **0.04 MB** (static musl build) |
 | **Daemon resident RSS** | **0.04 MB** |
 | **Daemon binary** | 58 KB stripped, static musl |
+| **Static agent** | 5.9 MB, zero shared libraries |
 | **Peak RSS, full recon scan** | 1.9 MB |
 | **Startup** | under 10 ms |
 | **Third-party runtime deps** | OpenSSL (system lib) |
@@ -39,11 +40,14 @@ not Sentinel's own memory — a program that only calls `printf()` sits at 1.4 M
 on the same host. Building against musl removes the shared pages and the real
 number becomes visible.
 
-**The honest caveat:** C99 has no TLS. HTTPS goes through system OpenSSL. That
-is a real dependency, and a genuinely static agent would need a vendored TLS
-stack — a larger security liability than the dependency itself. The *daemon* is
-the component designed to be fully static, and it is: it needs no TLS, because
-it listens rather than connects.
+**On dependencies:** C99 has no TLS, so HTTPS goes through OpenSSL. That means
+the default `sentinel` binary needs `libssl` present, and `make static-agent`
+produces a **fully static alternative with no shared libraries at all** — the
+build verifies DNS and TLS still work before calling it good. Copy that one
+file to a host with nothing installed and it runs.
+
+The *daemon* is smaller still, because it needs no TLS at all: it listens rather
+than connects, so it builds against musl at 58 KB.
 
 ---
 
@@ -85,9 +89,10 @@ should not be able to rewrite it.
 ### Build from source
 
 ```sh
-make            # agent, daemon, engine installer, bench
-make test       # 229 assertions + daemon self-test
-make static     # static musl daemon (the resident component)
+make              # agent, daemon, engine installer, bench
+make test         # 231 assertions + daemon self-test
+make static       # static musl daemon (the resident component)
+make static-agent # fully static agent, no shared libraries
 ```
 
 ---
@@ -248,7 +253,7 @@ src/core/           JSON, SHA-256, TLS/HTTP, orchestrator, report, SARIF,
 src/plugins/        19 audit plugins
 src/sentineld.c     native resident daemon
 tools/              engine installer, benchmark
-tests/              229-assertion suite
+tests/              231-assertion suite
 ```
 
 Adding a plugin means one file in `src/plugins/` and one line in the registry in

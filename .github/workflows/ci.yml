@@ -206,6 +206,16 @@ jobs:
           ./bin/sentineld --self-test
           echo "static daemon build ok"
 
+      # The static agent is the "one file, no dependencies" story. It is built
+      # with glibc rather than musl because net.c needs OpenSSL and musl
+      # toolchains ship no OpenSSL headers.
+      - name: Build and verify the static agent
+        run: |
+          make static-agent
+          ldd bin/sentinel-static 2>&1 | grep -q 'not a dynamic' \
+            || { echo "::error::the static agent still has shared libraries"; exit 1; }
+          echo "static agent has no shared library dependencies"
+
   installer:
     name: installer
     runs-on: ubuntu-latest
@@ -279,6 +289,25 @@ jobs:
               sys.exit(1)
           print(f"no shell-string execution in {len(files)} tracked source files")
           PY
+
+      # macOS clang rejects any function or constant that is compiled but
+      # never referenced, and several plugins only ever call their Linux-only
+      # helpers from inside a platform guard. Compiling with __linux__ removed
+      # reproduces exactly what macOS does, on any runner.
+      - name: Every file compiles with the Linux guard removed
+        run: |
+          fail=0
+          for f in src/core/*.c src/plugins/*.c src/cli.c; do
+            if ! gcc -O2 -Wall -Wextra -Werror -std=c99 -Iinclude \
+                 -D_POSIX_C_SOURCE=200809L -D__APPLE__=1 \
+                 -U__linux__ -Ulinux -U__gnu_linux__ \
+                 -c "$f" -o /dev/null 2>/tmp/err; then
+              echo "::error::$f does not compile off Linux (dead code under a platform guard)"
+              grep 'error:' /tmp/err | head -3
+              fail=1
+            fi
+          done
+          [ "$fail" -eq 0 ] && echo "every file compiles with __linux__ removed"
 
       - name: No hardcoded state directory
         run: |
