@@ -1,0 +1,46 @@
+# Sentinel (unprivileged) — the agent and the native daemon.
+FROM debian:bookworm-slim AS build
+
+RUN apt-get update -qq && \
+    apt-get install -y -qq --no-install-recommends \
+        build-essential libssl-dev ca-certificates && \
+    rm -rf /var/lib/apt/lists/*
+
+WORKDIR /src
+COPY . .
+# Reproducible: no timestamps or paths baked into the binary.
+RUN make all
+
+# Prove the binaries work in the image before shipping them. Use absolute
+# paths: a relative one breaks the moment the RUN changes directory.
+RUN SENTINEL_HOME=/tmp/st /src/bin/sentinel localhost --stages audit --out /tmp/o.json
+RUN /src/bin/sentineld --self-test
+
+FROM debian:bookworm-slim
+
+RUN apt-get update -qq && \
+    apt-get install -y -qq --no-install-recommends \
+        libssl3 ca-certificates && \
+    rm -rf /var/lib/apt/lists/* && \
+    useradd --system --create-home --home-dir /home/sentinel --shell /usr/sbin/nologin sentinel && \
+    mkdir -p /var/lib/sentinel && chown sentinel:sentinel /var/lib/sentinel
+
+COPY --from=build /src/bin/sentinel  /usr/local/bin/sentinel
+COPY --from=build /src/bin/sentineld /usr/local/bin/sentineld
+
+# Unprivileged by default: an agent that reports on a host should not be able to
+# rewrite it. Privileged paths (kernel remediation, systemd install) require
+# opting in explicitly.
+#
+# Because it runs unprivileged, a bind-mounted output directory must be
+# writable by this uid. The agent exits non-zero and says so rather than
+# silently dropping a report, so a permissions mistake is visible immediately:
+#   mkdir -p ./out && chmod 777 ./out
+#   docker run --rm -v "$PWD/out:/out" sentinel example.com --report /out/r.html
+USER sentinel
+ENV SENTINEL_HOME=/var/lib/sentinel
+WORKDIR /var/lib/sentinel
+
+# The native daemon is the resident component; the agent is the CLI.
+ENTRYPOINT ["/usr/local/bin/sentinel"]
+CMD ["--help"]

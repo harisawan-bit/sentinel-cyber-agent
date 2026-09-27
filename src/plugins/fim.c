@@ -268,29 +268,16 @@ static int run(orchestrator_t *ctx, const char *target)
 {
     if (!is_local_target(target) && !ctx->server_audit) return 0;
 
-    /* Python gated the whole engine on sys.platform.startswith("linux"). */
-#if defined(__linux__)
+    /* The Python gated this whole engine on sys.platform.startswith("linux").
+     * That was more restrictive than it needed to be: file hashing and the
+     * persistence sweep work on any POSIX system, so only the paths *inside*
+     * these functions are Linux-specific. Gating the calls instead would leave
+     * the functions unreferenced on macOS, which -Werror rejects as dead code,
+     * and would silently skip integrity monitoring where it does work. */
     audit_file_integrity(ctx, target);
     audit_persistence(ctx, target);
     audit_kernel_taint(ctx, target);
-#else
-    const char *platform =
-#if defined(__APPLE__)
-        "darwin";
-#elif defined(_WIN32)
-        "win32";
-#else
-        "unknown";
-#endif
-    char value[128];
-    snprintf(value, sizeof(value), "FIM baseline audit inactive on %s", platform);
-    char detail[256];
-    snprintf(detail, sizeof(detail),
-             "FIM engine active on Linux servers. Platform %s skipped.", platform);
-    json_value_t *meta = json_object();
-    json_object_set_str(meta, "platform", platform);
-    add_finding(ctx, target, FT_HARDENING, SEV_INFO, value, detail, meta);
-#endif
+
     return 0;
 }
 

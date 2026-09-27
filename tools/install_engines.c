@@ -200,7 +200,7 @@ int main(int argc, char **argv)
         free(digest);
 
         if (rc != 0) {
-            printf("    [!] extraction failed (is `unzip` installed?)\n");
+            printf("    [!] extraction failed (is the unzip binary installed?)\n");
             failures++;
         } else {
             printf("    [+] %s installed into bin/engines/\n", name);

@@ -46,6 +46,10 @@ json_value_t *json_array(void);
 json_value_t *json_object(void);
 void json_free(json_value_t *v);
 
+/* Free only the node itself, not its children. Use this after moving children
+ * out into another container, otherwise json_free frees them a second time. */
+void json_free_shallow(json_value_t *v);
+
 /* Take ownership of `s` (must be malloc'd) and append to an array. */
 void json_array_push(json_value_t *arr, json_value_t *item);
 

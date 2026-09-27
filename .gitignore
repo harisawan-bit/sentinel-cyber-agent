@@ -1,19 +1,13 @@
-# Python
-__pycache__/
-*.py[cod]
-*.egg-info/
-.eggs/
-build/
-dist/
-.pytest_cache/
-.venv/
-
 # C build artifacts
 *.o
 *.a
 *.so
-# Test and tool binaries that do not live in bin/
+# Test, tool, and sanitizer binaries that do not live in bin/
 sentinel_tests
+sentinel_asan
+sentinel_tests_asan
+staging/
+dist/
 
 # Downloaded engine binaries (fetched by scripts/install_engines.py)
 bin/

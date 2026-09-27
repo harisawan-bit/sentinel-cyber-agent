@@ -23,20 +23,24 @@
 /* A daemon that should never be handing out shells. Matched as a *substring*
  * of the parent's comm, which is what makes the forked worker forms
  * ("nginx: worker", "php-fpm: pool") match without enumerating them. */
+#if defined(__linux__)
 static const char *SUSPICIOUS_PARENTS[] = {
     "nginx", "apache2", "httpd", "www-data", "caddy", "lighttpd",
     "php-fpm", "gunicorn", "uwsgi", "node", "java", "ruby",
     "mysqld", "mariadbd", "postgres", "mongod", "redis-server"
 };
+#endif
 
 /* LOLBins and shells. Matched as an *exact* comm: these names are specific
  * enough that a substring test would only manufacture false positives. */
+#if defined(__linux__)
 static const char *SUSPICIOUS_CHILDREN[] = {
     "sh", "bash", "dash", "zsh", "ksh",
     "curl", "wget", "nc", "netcat", "ncat", "socat",
     "python", "python3", "perl", "ruby", "lua",
     "powershell", "cmd.exe", "whoami", "id"
 };
+#endif
 
 #define CMDLINE_CAP  4096   /* per-process read bound; see cmdline_of() */
 #define STAT_CAP     4096
@@ -71,6 +75,8 @@ static char *scrub(char *s)
     return str_trim(s);
 }
 
+#if defined(__linux__)
+/* Process-name matching helper for lineage checks: Linux only. */
 /* Read /proc/<pid>/cmdline and render it printable.
  *
  * cmdline is argv as a single NUL-separated blob, not a space-separated line:
@@ -106,7 +112,11 @@ static char *cmdline_of(int pid)
         if (b.data[i] == '\0') b.data[i] = ' ';
     return scrub(buf_release(&b));
 }
+#endif
 
+
+#if defined(__linux__)
+/* Process-name matching helper for lineage checks: Linux only. */
 /* Parse /proc/<pid>/stat into `p`. Format: "pid (comm) state ppid ...".
  *
  * comm is attacker-chosen and may itself contain spaces and parentheses, which
@@ -135,7 +145,11 @@ static int parse_stat(const char *text, proc_t *p)
     p->ppid = (int)strtol(q, NULL, 10);
     return 0;
 }
+#endif
 
+
+#if defined(__linux__)
+/* Process-name matching helper for lineage checks: Linux only. */
 /* qsort/bsearch key over proc_t by pid — a linear parent lookup would be O(n^2)
  * on a host with thousands of processes. */
 static int cmp_pid(const void *a, const void *b)
@@ -144,7 +158,11 @@ static int cmp_pid(const void *a, const void *b)
     int pb = ((const proc_t *)b)->pid;
     return (pa > pb) - (pa < pb);
 }
+#endif
 
+
+#if defined(__linux__)
+/* Process-name matching helper for lineage checks: Linux only. */
 static const proc_t *find_pid(const proc_t *ps, size_t n, int pid)
 {
     proc_t key;
@@ -154,7 +172,11 @@ static const proc_t *find_pid(const proc_t *ps, size_t n, int pid)
     key.cmdline = NULL;
     return (const proc_t *)bsearch(&key, ps, n, sizeof(proc_t), cmp_pid);
 }
+#endif
 
+
+#if defined(__linux__)
+/* Enumerates process lineage from procfs: Linux only. */
 /* ---------------------------------------------------------------- the scan */
 
 static proc_t *collect_procs(size_t *out_n)
@@ -214,13 +236,21 @@ static proc_t *collect_procs(size_t *out_n)
     *out_n = n;
     return ps;
 }
+#endif
 
+
+#if defined(__linux__)
+/* Enumerates process lineage from procfs: Linux only. */
 static void free_procs(proc_t *ps, size_t n)
 {
     for (size_t i = 0; i < n; i++) free(ps[i].cmdline);
     free(ps);
 }
+#endif
 
+
+#if defined(__linux__)
+/* Process-name matching helper for lineage checks: Linux only. */
 /* --------------------------------------------------------------- detectors */
 
 static int is_suspicious_parent(const char *comm)
@@ -229,14 +259,22 @@ static int is_suspicious_parent(const char *comm)
         if (str_contains(comm, SUSPICIOUS_PARENTS[i])) return 1;
     return 0;
 }
+#endif
 
+
+#if defined(__linux__)
+/* Process-name matching helper for lineage checks: Linux only. */
 static int is_suspicious_child(const char *comm)
 {
     for (size_t i = 0; i < NELEM(SUSPICIOUS_CHILDREN); i++)
         if (strcmp(comm, SUSPICIOUS_CHILDREN[i]) == 0) return 1;
     return 0;
 }
+#endif
 
+
+#if defined(__linux__)
+/* Enumerates process lineage from procfs: Linux only. */
 static void audit_lineage(orchestrator_t *ctx, const proc_t *ps, size_t n)
 {
     for (size_t i = 0; i < n; i++) {
@@ -282,6 +320,8 @@ static void audit_lineage(orchestrator_t *ctx, const proc_t *ps, size_t n)
         buf_free(&v); buf_free(&d);
     }
 }
+#endif
+
 
 /* A non-empty /etc/ld.so.preload injects a shared object into every dynamically
  * linked process on the host, including setuid binaries. There is no benign
@@ -341,6 +381,11 @@ static int run(orchestrator_t *ctx, const char *target)
     if (!ctx || !target) return 0;
     if (!audit_applies(ctx, target)) return 0;
 
+    /* The ld.so.preload hijack check only inspects one file's existence, so it
+     * is meaningful on any platform and is not behind the guard. On macOS the
+     * file should not exist, and its presence is itself worth reporting. */
+    audit_rootkit_preload(ctx);
+
 #if defined(__linux__)
     size_t n = 0;
     proc_t *ps = collect_procs(&n);
@@ -353,7 +398,6 @@ static int run(orchestrator_t *ctx, const char *target)
         return 0;
     }
     audit_lineage(ctx, ps, n);
-    audit_rootkit_preload(ctx);
     free_procs(ps, n);
 #else
     buf_t v, d; buf_init(&v); buf_init(&d);

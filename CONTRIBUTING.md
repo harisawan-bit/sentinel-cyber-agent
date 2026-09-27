@@ -1,131 +1,81 @@
 # Contributing to Sentinel
 
-Thanks for taking the time. This project is small and opinionated, so a short
-set of ground rules saves everyone a review cycle.
+## Build
 
-## Ground Rules
-
-1. **Authorised testing only.** Never add a default target that Sentinel would
-   scan without permission. `example.com` (IANA) and `scanme.sh`
-   (projectdiscovery) are the sanctioned test hosts.
-2. **MIT core stays clean.** Do not add a dependency or vendor code under
-   GPL/AGPL. If a capability genuinely requires copyleft, wire it as an
-   external subprocess and document it in [`LICENSES.md`](LICENSES.md). See
-   "License Isolation" below.
-3. **Standard library first.** The core agent ships with no third-party
-   runtime imports. `http_probe_plugin` was rewritten from `requests` to
-   `urllib` for exactly this reason. `sherlock-project` is the one declared
-   dependency and is optional at runtime — the plugin degrades to a note when
-   it is absent.
-4. **No shell.** Use list-form `subprocess` argv. `shell=True` and `system()`
-   are not accepted; they have caused real command-injection surface in tools
-   like this.
-5. **No writes outside the state directory.** All persistent state goes through
-   `sentinel/core/paths.py` and honours `SENTINEL_HOME`. Do not hardcode
-   `~/.sentinel` or `os.path.expanduser` in a new module.
-6. **Root is opt-in.** New code must not require root unless it is behind an
-   explicit flag, and must offer a dry-run.
-
-## Development Setup
-
-```bash
-git clone https://github.com/harisawan-bit/sentinel-cyber-agent.git
-cd sentinel-cyber-agent
-
-python3 -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt          # optional: sherlock only
-pip install -e .                         # installs the `sentinel` entrypoint
-
-# Optional: fetch MIT engine binaries (nuclei, subfinder, httpx).
-# Downloads are SHA-256 verified against the upstream release checksums.
-python3 scripts/install_engines.py
+```sh
+sudo apt-get install -y build-essential libssl-dev   # or openssl-devel / apk
+make
+make test
 ```
 
-The first-party plugins — `host_harden`, `process_anomaly`, `fim_audit`,
-`lan_scanner`, `http-probe`, `cert_audit`, `sigma_rules`, `threat_intel` —
-require no external engines and no third-party packages. Everything works
-without `install_engines.py`.
+`make test` runs the assertion suite and then the daemon self-test. Both must
+pass before you open a PR.
 
-## Running the Tests
+## House rules
 
-The suite is plain `python`, not pytest, so it runs anywhere:
+These are the properties the test suite enforces. If a change breaks one, the
+suite fails rather than a reviewer having to notice it.
 
-```bash
-for t in tests/test_*.py; do python3 "$t" || break; done
+- **Warnings are errors.** The build is `-std=c99 -Wall -Wextra -Werror` with no
+  exceptions. Do not silence a warning; fix the code.
+- **No shell strings.** Spawn subprocesses with `argv` arrays via `proc_run()`.
+  `system()` and `popen()` are not allowed — an attacker-controlled hostname or
+  response body must never reach a shell.
+- **Escape at the boundary.** Pass raw values to the report and JSON layers; they
+  escape on the way out. Do not pre-escape in a plugin, that double-encodes.
+- **Every allocation has an owner.** A JSON tree freed recursively must not have
+  had its children moved elsewhere first. If you move children between trees,
+  use `json_free_shallow()` on the source.
+- **Bound every read.** Response bodies, `/proc` reads, and command output need a
+  hard cap. A hostile server must not be able to exhaust memory.
+- **Resolve state through `paths_state_dir()`.** Never hardcode `~/.sentinel`.
+  `SENTINEL_HOME` must be honoured, and re-read on every call rather than cached.
+- **Destructive actions are opt-in.** Remediation previews by default; a test
+  must never write to `/etc/sysctl.d/` or change a live sysctl.
+
+## Adding a plugin
+
+1. Create `src/plugins/<name>.c`.
+2. Export `const plugin_t <name>_plugin` with a `name`, a `stage`, a
+   `description`, and any `requires`.
+3. Add it to the table in `src/core/registry.c`.
+4. Add assertions to `tests/test_main.c`.
+
+A plugin must compile standalone:
+
+```sh
+gcc -O2 -Wall -Wextra -Werror -std=c99 -Iinclude -c src/plugins/<name>.c -o /dev/null
 ```
 
-`pytest tests/` also works if you prefer it.
+CI checks this for every plugin, so a missing include cannot hide behind another
+translation unit.
 
-Native engine:
+## Tests
 
-```bash
-make          # builds bin/sentineld with -Wall -Wextra -std=c99
-make test     # runs the built-in --self-test
+`tests/test_main.c` is a single runner so the Makefile links one `main()`.
+
+Add regression tests to `test_regressions()` for any bug you fix. Every entry
+there corresponds to a real defect that shipped into a commit at least once;
+that section is the most valuable part of the suite.
+
+Run under sanitizers before pushing:
+
+```sh
+gcc -g -O1 -fsanitize=address,undefined -fno-omit-frame-pointer \
+    -std=c99 -Iinclude -D_POSIX_C_SOURCE=200809L \
+    -o /tmp/san src/cli.c src/core/*.c src/plugins/*.c -lssl -lcrypto
+SENTINEL_HOME=/tmp/san-state /tmp/san localhost --stages audit
 ```
 
-CI runs the full matrix on Python 3.10–3.13 plus the C build. Keep it green;
-it is a required check on `main`.
+## State isolation in tests
 
-## Test Isolation
+Every test must set `SENTINEL_HOME` to a scratch directory it cleans up first.
+A leftover baseline from a previous run will otherwise make the test fail for
+the wrong reason. CI fails the build if the suite creates a real `~/.sentinel`.
 
-Tests must never write to the real `~/.sentinel`. State leaks from the suite
-cause the next real audit to report phantom CRITICAL alerts from test
-fixtures. Set the override **before importing** anything that resolves a path:
+## Pull requests
 
-```python
-import os, tempfile
-os.environ["SENTINEL_HOME"] = tempfile.mkdtemp(prefix="sentinel_test_home_")
-# ... then import sentinel.core.*
-```
-
-See `tests/test_honeyport.py` and `tests/test_deception.py` for the pattern,
-including the regression tests that assert nothing leaked.
-
-## Adding a Plugin
-
-1. Create `sentinel/core/plugins/<name>_plugin.py`.
-2. Subclass `Plugin` and set `name`, `description`, `stage`, and `requires`.
-   `stage` must be one of `recon`, `scan`, `osint`, `cloud`, `audit`, `intel`
-   (see `orchestrator.STAGE_ORDER`).
-3. `run()` must **yield** `Finding` objects and must not raise on a missing
-   binary or an unreachable target. The orchestrator degrades gracefully, but
-   an explicit `info` note reads better than a traceback.
-4. Declare external binaries in `requires`. The orchestrator now checks it and
-   emits `<name> skipped: missing <bin>` rather than an opaque error. If your
-   plugin shells out to a Python module rather than a binary, set
-   `requires = []` and note why.
-5. If you emit a `finding_type == "host"` finding, put technology tokens in
-   `metadata["tech"]` as `key=value` — the orchestrator feeds those to OSV
-   correlation.
-6. Add tests in a new `tests/test_<area>.py` following the sandbox pattern.
-
-No registry file needs updating; discovery is automatic via `pkgutil`.
-
-## Commit and PR Conventions
-
-Conventional Commits:
-
-```
-feat(honeyport): add gopher decoy listener
-fix(remediation): skip non-compliant params missing from /proc
-docs(readme): document SENTINEL_HOME
-chore(ci): pin actions/checkout to v4
-```
-
-PRs should:
-- Target `main`.
-- Have a body that states the problem, the change, and how you verified it.
-- Include real command output for behavioural claims, not a summary of intent.
-- Update `README.md` and `CHANGELOG.md` when behaviour or flags change.
-
-## License Isolation
-
-The MIT core must stay importable and linkable by commercial users. Engines
-under GPL/AGPL (`sqlmap`, `wazuh`, `MISP`, `sliver`, `MobSF`, `radare2`,
-`ImHex`) may be referenced but never imported or vendored — subprocess only.
-Add any new third-party engine to the table in [`LICENSES.md`](LICENSES.md)
-with its license and integration method.
-
-## Security Issues
-
-Do not open a public issue. See [`SECURITY.md`](SECURITY.md).
+- One logical change per PR.
+- Say what you verified and how — "ran X, got Y" beats "should work".
+- New external engines must be permissively licensed, or invoked strictly as an
+  isolated subprocess, to keep the MIT core clean. See `LICENSES.md`.

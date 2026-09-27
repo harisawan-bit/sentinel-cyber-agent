@@ -589,7 +589,9 @@ static int run(orchestrator_t *ctx, const char *target)
         char *lower = malloc(strlen(raw) + 1);
         if (lower) {
             str_lower(raw, lower, strlen(raw) + 1);
-            if (strlist_push_owned(&samples, lower) != 0) free(lower);
+            /* push_owned takes ownership: it frees on failure itself, so
+             * freeing here too would be a double free. */
+            strlist_push_owned(&samples, lower);
         }
         free(raw);
     }
