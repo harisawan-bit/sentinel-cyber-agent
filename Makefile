@@ -65,10 +65,26 @@ $(BENCH): tools/bench.c $(CORE_SRC) $(STUB_SRC)
 check: all test
 	@echo "all checks passed"
 
+# Static build of the always-on daemon only.
+#
+# The agent (bin/sentinel) cannot be built this way: net.c needs OpenSSL for
+# TLS, and musl toolchains have no OpenSSL headers. Linking glibc's static
+# objects against musl does not work either. The daemon has no TLS dependency
+# precisely so it can be made tiny enough to sit resident on a small host.
+STATIC_CFLAGS := -Os -Wall -Wextra -Werror -std=c99 -static -s
+
 static:
 	$(MAKE) clean
-	$(MAKE) CC=musl-gcc CFLAGS="-Os -Wall -Wextra -Werror -std=c99 -static -s" \
-	        CPPFLAGS="-Iinclude -D_POSIX_C_SOURCE=200809L"
+	@mkdir -p bin
+	@if command -v musl-gcc >/dev/null 2>&1; then \
+	    echo "building a static musl daemon with $(STATIC_CFLAGS)"; \
+	    musl-gcc $(STATIC_CFLAGS) src/sentineld.c -o $(DAEMON); \
+	else \
+	    echo "musl-gcc not found; building a static glibc daemon instead"; \
+	    $(CC) $(STATIC_CFLAGS) src/sentineld.c -o $(DAEMON); \
+	fi
+	@ls -la $(DAEMON)
+	@echo "note: the TLS-dependent agent is not built in this mode"
 
 bench: all
 	@size bin/sentinel bin/sentineld 2>/dev/null || true
