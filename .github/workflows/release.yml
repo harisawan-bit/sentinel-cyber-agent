@@ -1,0 +1,112 @@
+name: Release
+
+on:
+  push:
+    tags: [ 'v*' ]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing tag to publish a release for
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: build and publish
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install the toolchain and TLS headers
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq build-essential libssl-dev zip
+
+      # A release must not be able to ship a binary that does not run.
+      - name: Build and verify
+        env:
+          SENTINEL_HOME: ${{ runner.temp }}/sentinel-release
+        run: |
+          make all
+          make test
+          cd "$RUNNER_TEMP"
+          "$GITHUB_WORKSPACE/bin/sentinel" localhost --stages audit --out out.json
+          test -s out.json
+
+      - name: Build the static musl daemon
+        run: |
+          sudo apt-get install -y -qq musl-tools
+          make static
+          ./bin/sentineld --self-test
+          make all   # restore the dynamic build for the rest of the package
+
+      - name: Package
+        run: |
+          set -eu
+          # Stage everything under one directory. Mixing `-C dist` for the
+          # binaries with repo-relative paths for the docs silently drops the
+          # latter, so the whole layout is built explicitly and then verified.
+          rm -rf dist staging
+          mkdir -p dist staging
+          make all
+
+          install -m 0755 bin/sentinel          staging/
+          install -m 0755 bin/sentineld         staging/
+          # A static daemon is what makes the "drop it on a box" story real.
+          install -m 0755 bin/sentineld         staging/sentineld-static
+          install -m 0755 scripts/install.sh    staging/
+          install -m 0644 README.md LICENSE SECURITY.md CHANGELOG.md staging/
+
+          tar czf dist/sentinel-linux-amd64.tar.gz -C staging .
+          sha256sum dist/sentinel-linux-amd64.tar.gz > dist/sentinel-linux-amd64.tar.gz.sha256
+
+          # A release must not ship a partial archive.
+          missing=""
+          for f in sentinel sentineld sentineld-static install.sh README.md LICENSE; do
+            tar tzf dist/sentinel-linux-amd64.tar.gz | grep -qx "./$f" || missing="$missing $f"
+          done
+          if [ -n "$missing" ]; then
+            echo "::error::archive is missing:$missing"
+            tar tzf dist/sentinel-linux-amd64.tar.gz
+            exit 1
+          fi
+          echo "archive verified"
+
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+          TAG="${{ inputs.tag || github.ref_name }}"
+          NOTES=$(mktemp)
+          # Prefer the changelog section for this tag, fall back to the last one.
+          awk -v tag="$TAG" '
+            $0 ~ "^## \\[" tag "\\]" { grab=1; next }
+            grab && /^## \[/ { exit }
+            grab { print }
+          ' CHANGELOG.md > "$NOTES" || true
+          if [ ! -s "$NOTES" ]; then
+            git show "$TAG:CHANGELOG.md" 2>/dev/null | \
+              awk -v tag="$TAG" '
+                $0 ~ "^## \\[" tag "\\]" { grab=1; next }
+                grab && /^## \[/ { exit }
+                grab { print }
+              ' > "$NOTES" || true
+          fi
+          [ -s "$NOTES" ] || printf 'See CHANGELOG.md for details.' > "$NOTES"
+
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" dist/sentinel-linux-amd64.tar.gz* --clobber
+            echo "assets updated on the existing release $TAG"
+          else
+            gh release create "$TAG" \
+              --title "$TAG" \
+              --notes-file "$NOTES" \
+              dist/sentinel-linux-amd64.tar.gz \
+              dist/sentinel-linux-amd64.tar.gz.sha256
+            echo "created release $TAG"
+          fi

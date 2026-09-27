@@ -24,9 +24,11 @@ release; you are credited in the release notes unless you prefer otherwise.
 
 | Component | Notes |
 |---|---|
-| `sentinel/core/**` | Python audit, remediation, deception, and reporting code |
-| `src/sentineld.c` | Native C99 daemon, including trap listeners and auto-drop |
-| `scripts/install_engines.py` | Engine download, checksum verification, extraction |
+| `src/core/**` | Audit, remediation, deception, reporting, and the HTTP/TLS layer |
+| `src/plugins/**` | All 19 audit plugins |
+| `src/cli.c`, `src/sentineld.c` | Command line and the resident daemon |
+| `tools/install_engines.c` | Engine download, checksum verification, extraction |
+| `scripts/install.sh` | Build, verification, and install path |
 | Findings that could mislead an operator | A suppressed or spoofed finding is a security defect, not a cosmetic bug |
 
 **Out of scope**
@@ -56,11 +58,14 @@ operator already holds administrative rights. Understand this before running it:
 - **The native engine auto-drops IPs.** Running `sentineld` as root inserts an
   `iptables -I INPUT -s <ip> -j DROP` rule for every trapped source address.
   This is intended, but it means a scanner, a monitoring probe, or an
-  accidental self-connection can get your own address blocked. Run the
-  non-privileged Python agent if you do not want that.
+  accidental self-connection can get your own address blocked. The agent
+  (`sentinel`) does not auto-drop; only `sentineld` does, and only as root.
 - **Honeytokens are real credential-shaped strings.** They are high-entropy and
   non-functional, but secret scanners will flag them. Baseline your tooling
   before seeding them in a repository.
+- **The agent links OpenSSL.** C99 has no TLS, so HTTPS goes through system
+  OpenSSL. It is the only third-party library linked into the agent. The daemon
+  (`sentineld`) has no TLS dependency and builds fully static against musl.
 - **Only scan systems you own or are authorised to test.** Port scanning and
   vulnerability probing are illegal in many jurisdictions without written
   permission.

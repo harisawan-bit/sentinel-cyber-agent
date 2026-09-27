@@ -54,6 +54,15 @@ void json_free(json_value_t *v)
     free(v);
 }
 
+void json_free_shallow(json_value_t *v)
+{
+    if (!v) return;
+    free(v->items);
+    free(v->keys);
+    free(v->string);
+    free(v);
+}
+
 static void grow(json_value_t *v)
 {
     if (v->count < v->capacity) return;

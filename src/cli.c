@@ -8,7 +8,9 @@
 
 #include "sentinel/sentinel.h"
 #include "sentinel/buf.h"
+#include "sentinel/burner.h"
 #include "sentinel/config.h"
+#include "sentinel/daemon.h"
 #include "sentinel/notifiers.h"
 #include "sentinel/remediation.h"
 #include "sentinel/report.h"
@@ -42,6 +44,11 @@ static void usage(FILE *f)
 "  --daemon                   run continuous watchdog daemon\n"
 "  --interval <secs>          daemon cycle interval (default: 300)\n"
 "  --honeyport-listen         bind active decoy honeyports in background\n"
+"  --burner-daemon            run the micro-burner decoy trap in the foreground\n"
+"  --burner-ssh PORT          burner SSH decoy port (default 2222)\n"
+"  --burner-smtp PORT         burner SMTP decoy port (default 2525)\n"
+"  --burner-n8n PORT          burner webhook decoy port (default 5678)\n"
+"  --install-systemd          install and enable the systemd guardian service\n"
 "  --sarif <file>             write OASIS SARIF v2.1.0 findings\n"
 "  --json                     emit raw JSON\n"
 "  --out <file>               write findings JSON to file\n"
@@ -53,44 +60,6 @@ static void usage(FILE *f)
 "  --slack-webhook <url>      Slack incoming webhook URL\n"
 "  --version                  print version and exit\n"
 "  -h, --help                 show this help\n");
-}
-
-static int seed_honeytokens(const char *dir)
-{
-    /* Decoy credentials that are worthless but high-fidelity, so that any
-     * exfiltration of them is unambiguous. Never real secrets. */
-    char *k1 = random_hex(20), *k2 = random_hex(24), *k3 = random_hex(16), *k4 = random_hex(16);
-    if (!k1 || !k2 || !k3 || !k4) { free(k1); free(k2); free(k3); free(k4); return -1; }
-
-    char path[1024];
-    buf_t content; buf_init(&content);
-    buf_printf(&content,
-        "# Staging Microservices Config\n"
-        "OPENAI_API_KEY=«redacted:sk-…»%s\n"
-        "ANTHROPIC_API_KEY=«redacted:sk-…»%s\n"
-        "SMTP_HOST=127.0.0.1\nSMTP_PORT=2525\nSMTP_PASS=SmtpSecret_%s\n"
-        "N8N_API_KEY=n8n_api_canary_%s\n"
-        "N8N_WEBHOOK_URL=http://127.0.0.1:5678/webhook/canary-trigger\n"
-        "REMOTE_BACKUP_HOST=127.0.0.1\nREMOTE_BACKUP_PORT=2222\n",
-        k1, k2, k3, k4);
-
-    snprintf(path, sizeof(path), "%s/.env.staging.canary", dir);
-    write_file(path, content.data, content.len);
-    buf_free(&content);
-
-    snprintf(path, sizeof(path), "%s/docker-config.json.canary", dir);
-    write_file(path, "{\"auths\":{\"127.0.0.1:5000\":{\"auth\":\"Y2lfcnVubmVyX2RlY295OmRja3JfcGF0X2NhbmFyeQ==\"}}}\n", 82);
-
-    snprintf(path, sizeof(path), "%s/id_rsa_backup.canary", dir);
-    write_file(path, "[REDACTED PRIVATE KEY]\n", 22);
-
-    printf("[+] Seeded 3 honeytoken canaries into '%s'\n", dir);
-    printf("    -> [llm]      %s/.env.staging.canary\n", dir);
-    printf("    -> [docker]   %s/docker-config.json.canary\n", dir);
-    printf("    -> [ssh]      %s/id_rsa_backup.canary\n", dir);
-
-    free(k1); free(k2); free(k3); free(k4);
-    return 0;
 }
 
 static int canary_init(void)
@@ -108,6 +77,55 @@ static int canary_init(void)
     return rc;
 }
 
+/* Write decoy credentials into `dir` for the honeytoken tripwire to watch.
+ * The values are worthless by construction, so exfiltrating one is a
+ * zero-false-positive signal that the host was read by something it should not
+ * have been. Never real credentials. */
+static int seed_honeytokens(const char *dir)
+{
+    if (!dir || !*dir) dir = ".";
+
+    char *k1 = random_hex(20), *k2 = random_hex(24);
+    char *k3 = random_hex(16), *k4 = random_hex(16);
+    if (!k1 || !k2 || !k3 || !k4) { free(k1); free(k2); free(k3); free(k4); return -1; }
+
+    buf_t content; buf_init(&content);
+    buf_printf(&content,
+        "# Staging Microservices Config\n"
+        "OPENAI_API_KEY=sk-live-%s\n"
+        "ANTHROPIC_API_KEY=sk-ant-%s\n"
+        "SMTP_HOST=127.0.0.1\nSMTP_PORT=2525\nSMTP_PASS=SmtpSecret_%s\n"
+        "N8N_API_KEY=n8n_api_canary_%s\n"
+        "N8N_WEBHOOK_URL=http://127.0.0.1:5678/webhook/canary-trigger\n"
+        "REMOTE_BACKUP_HOST=127.0.0.1\nREMOTE_BACKUP_PORT=2222\n",
+        k1, k2, k3, k4);
+
+    char path[1024];
+    int rc = 0;
+    snprintf(path, sizeof(path), "%s/.env.staging.canary", dir);
+    if (write_file(path, content.data, content.len) != 0) rc = -1;
+    buf_free(&content);
+
+    snprintf(path, sizeof(path), "%s/docker-config.json.canary", dir);
+    if (write_file(path, "{\"auths\":{\"127.0.0.1:5000\":"
+                          "{\"auth\":\"Y2lfcnVubmVyX2RlY295OmRja3JfcGF0X2NhbmFyeQ==\"}}}\n", 82) != 0)
+        rc = -1;
+    snprintf(path, sizeof(path), "%s/id_rsa_backup.canary", dir);
+    if (write_file(path, "[REDACTED PRIVATE KEY]\n", 22) != 0) rc = -1;
+
+    if (rc == 0) {
+        printf("[+] Seeded 3 honeytoken canaries into '%s'\n", dir);
+        printf("    -> [llm]      %s/.env.staging.canary\n", dir);
+        printf("    -> [docker]   %s/docker-config.json.canary\n", dir);
+        printf("    -> [ssh]      %s/id_rsa_backup.canary\n", dir);
+    } else {
+        printf("[!] Could not write every canary into '%s'\n", dir);
+    }
+
+    free(k1); free(k2); free(k3); free(k4);
+    return rc;
+}
+
 int main(int argc, char **argv)
 {
     const char *targets[MAX_TARGETS];
@@ -118,6 +136,8 @@ int main(int argc, char **argv)
     int do_daemon = 0, do_honeyport = 0, do_json = 0, do_diff = 0, do_notify = 0;
     int interval = 300;
     const char *seed_dir = NULL, *burner_file = NULL;
+    int do_burner_daemon = 0, do_systemd = 0;
+    int burner_ssh = 2222, burner_smtp = 2525, burner_n8n = 5678;
     const char *out_file = NULL, *report_file = NULL, *sarif_file = NULL;
     const char *tg_token = NULL, *tg_chat = NULL, *slack_wh = NULL;
     const char *positional_after_stage = NULL;
@@ -131,6 +151,11 @@ int main(int argc, char **argv)
         else if (strcmp(a, "--fix-kernel") == 0) do_fix = 1;
         else if (strcmp(a, "--dry-run") == 0) dry_run = 1;
         else if (strcmp(a, "--daemon") == 0) do_daemon = 1;
+        else if (strcmp(a, "--burner-daemon") == 0) do_burner_daemon = 1;
+        else if (strcmp(a, "--install-systemd") == 0) do_systemd = 1;
+        else if (strcmp(a, "--burner-ssh") == 0 && i + 1 < argc) burner_ssh = atoi(argv[++i]);
+        else if (strcmp(a, "--burner-smtp") == 0 && i + 1 < argc) burner_smtp = atoi(argv[++i]);
+        else if (strcmp(a, "--burner-n8n") == 0 && i + 1 < argc) burner_n8n = atoi(argv[++i]);
         else if (strcmp(a, "--honeyport-listen") == 0) do_honeyport = 1;
         else if (strcmp(a, "--json") == 0) do_json = 1;
         else if (strcmp(a, "--diff") == 0) do_diff = 1;
@@ -166,8 +191,41 @@ int main(int argc, char **argv)
 
     if (seed_dir) { seed_honeytokens(seed_dir); if (!wants_scan) return 0; }
     if (burner_file) {
-        write_file(burner_file, "", 0);
-        printf("[+] Generated burner honeypot compose file: %s\n", burner_file);
+        char *yaml = burner_compose_yaml(burner_ssh, burner_smtp, burner_n8n, "32m", "0.05");
+        if (yaml) {
+            write_file(burner_file, yaml, strlen(yaml));
+            printf("[+] Generated burner honeypot compose file: %s\n", burner_file);
+            printf("    -> Memory capped: 32MB | CPU limit: 0.05 | Read-only rootfs\n");
+            printf("    -> Run with: docker compose -f %s up -d\n", burner_file);
+            free(yaml);
+        }
+        if (!wants_scan) return 0;
+    }
+
+    if (do_burner_daemon) {
+        /* Runs in the foreground until interrupted: the point is that it is
+         * observable and killable, not a hidden process. */
+        int rc = burner_run("0.0.0.0", burner_ssh, burner_smtp, burner_n8n, 0);
+        if (!wants_scan) return rc;
+    }
+
+    if (do_systemd) {
+        char self[1024];
+        ssize_t n = readlink("/proc/self/exe", self, sizeof(self) - 1);
+        if (n > 0) self[n] = '\0'; else snprintf(self, sizeof(self), "sentinel");
+        buf_t ec; buf_init(&ec);
+        buf_printf(&ec, "%s --server-audit --daemon --interval 300 --notify", self);
+        char *unit = daemon_systemd_unit(ec.data, "root", "root", "/var/lib/sentinel");
+        buf_free(&ec);
+        if (!unit) return 1;
+#if defined(__linux__)
+        if (daemon_install_systemd(unit, "sentinel.service") != 0) {
+            printf("[*] Generated unit preview (install manually):\n\n%s\n", unit);
+        }
+#else
+        printf("[*] systemd is Linux-only. Unit preview:\n\n%s\n", unit);
+#endif
+        free(unit);
         if (!wants_scan) return 0;
     }
     if (do_fix) {
@@ -209,6 +267,16 @@ int main(int argc, char **argv)
 
     if (server_audit && ntargets == 0) targets[ntargets++] = "localhost";
     targets[ntargets] = NULL;
+
+    if (do_daemon) {
+        const char *tok = tg_token ? tg_token : getenv("TELEGRAM_BOT_TOKEN");
+        const char *cid = tg_chat  ? tg_chat  : getenv("TELEGRAM_CHAT_ID");
+        const char *wh  = slack_wh  ? slack_wh  : getenv("SLACK_WEBHOOK_URL");
+        daemon_run_loop(orch, targets, interval, stage_mask, report_file,
+                        tok, cid, wh, 0);
+        orch_free(orch);
+        return 0;
+    }
 
     orch_run(orch, targets, stage_mask);
 
@@ -282,8 +350,6 @@ int main(int argc, char **argv)
     buf_free(&title);
     json_free(findings);
     orch_free(orch);
-    (void)do_daemon;
     (void)do_honeyport;
-    (void)interval;
     return 0;
 }

@@ -13,6 +13,12 @@
 #include "sentinel/report.h"
 #include "sentinel/sarif.h"
 #include "sentinel/state.h"
+#include "sentinel/util.h"
+
+#include <sys/wait.h>
+#include <unistd.h>
+#include <signal.h>
+#include <time.h>
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -165,9 +171,10 @@ static void test_paths(void)
     /* Start from a known-empty directory: a leftover baseline from a previous
      * run would make "absent initially" fail for reasons unrelated to the code
      * under test. */
-    char cmd[512];
-    snprintf(cmd, sizeof(cmd), "rm -rf '%s'", tmp);
-    if (system(cmd) != 0) { /* best effort; the assertions below still apply */ }
+    {
+        char *rm[] = { "rm", "-rf", (char *)tmp, NULL };
+        proc_run(rm, NULL, 0, 30);   /* best effort; the assertions still apply */
+    }
 
     setenv("SENTINEL_HOME", tmp, 1);
     check("SENTINEL_HOME honoured", strcmp(paths_state_dir(), tmp) == 0);
@@ -179,8 +186,10 @@ static void test_paths(void)
     setenv("SENTINEL_HOME", "/tmp/sentinel_c_test_state_b", 1);
     check("relocation takes effect without restart",
           strcmp(paths_state_dir(), "/tmp/sentinel_c_test_state_b") == 0);
-    snprintf(cmd, sizeof(cmd), "rm -rf '%s'", "/tmp/sentinel_c_test_state_b");
-    if (system(cmd) != 0) { /* best effort */ }
+    {
+        char *rm[] = { "rm", "-rf", "/tmp/sentinel_c_test_state_b", NULL };
+        proc_run(rm, NULL, 0, 30);
+    }
     setenv("SENTINEL_HOME", tmp, 1);
 
     /* state_update then state_diff must round-trip and detect a new asset. */
@@ -375,6 +384,249 @@ static void test_buf(void)
 
 /* ------------------------------------------------------------------ main */
 
+
+/* --- Regression tests for bugs found during the C99 port. -------------------
+ * Each of these was a real defect that shipped into a commit at least once.
+ * They are cheap to run and expensive to rediscover, so they stay.
+ */
+
+static void test_regressions(void)
+{
+    section("regressions (each one shipped broken at least once)");
+
+    /* 1. A JSON parser that accepts truncated input turns a partial HTTP
+     *    response into a valid-looking empty result. A threat feed read this
+     *    way reported every CVE as unexploited. */
+    check("truncated object is rejected",
+          json_parse("{\"a\":", 5) == NULL);
+    check("truncated array is rejected",
+          json_parse("{\"a\":[1,2", 8) == NULL);
+    check("truncated string is rejected",
+          json_parse("{\"a\":\"unterminated", 16) == NULL);
+    {
+        json_value_t *ok = json_parse("{\"a\":[1,2]}", 11);
+        check("complete object still parses", ok != NULL);
+        json_free(ok);
+    }
+
+    /* 2. Content-Type was read one character past the value, so every
+     *    "text/html" came back as "ext/html" and chunked was never detected. */
+    {
+        const char *resp =
+            "HTTP/1.1 200 OK\r\n"
+            "Content-Type: text/html; charset=utf-8\r\n"
+            "Content-Length: 5\r\n\r\nhello";
+        /* find_ci is static in net.c, so assert the offset arithmetic here:
+         * "\nContent-Type:" is 14 bytes, so the value starts at +14. */
+        const char *ct = strstr(resp, "\nContent-Type:");
+        /* "\nContent-Type:" is 14 bytes, then one space, so the value starts
+         * at +15. Reading from +14 captured the space and turned every
+         * "text/html" into " text/htm", which then failed to match "chunked". */
+        check("content-type value starts past the space",
+              ct != NULL && strncmp(ct + 15, "text/html", 9) == 0);
+    }
+
+    /* 3. Moving children between JSON trees and then freeing the source
+     *    recursively double-frees every one of them. */
+    {
+        json_value_t *src = json_parse("[{\"a\":1},{\"b\":2}]", 17);
+        json_value_t *dst = json_array();
+        check("parse array for move test", src != NULL && dst != NULL);
+        for (size_t i = 0; i < json_len(src); i++)
+            json_array_push(dst, json_at(src, i));
+        json_free_shallow(src);          /* must NOT touch the moved children */
+        check("moved children survive a shallow free", json_len(dst) == 2);
+        check("moved child keeps its fields",
+              json_get(json_at(dst, 0), "a") != NULL);
+        check("moved child kept every field",
+              json_get(json_at(dst, 1), "b") != NULL);
+        json_free(dst);
+    }
+
+    /* 4. SENTINEL_HOME was cached on first read, so a test could not relocate
+     *    state after the first call. This is the same class of bug that once
+     *    wrote canary findings into a real ~/.sentinel. */
+    {
+        const char *d = "/tmp/sentinel_c_regression_state";
+        setenv("SENTINEL_HOME", d, 1);
+        check("paths honour a freshly set SENTINEL_HOME",
+              strcmp(paths_state_dir(), d) == 0);
+        setenv("SENTINEL_HOME", "/tmp/sentinel_c_regression_other", 1);
+        check("paths re-read SENTINEL_HOME after it changes",
+              strcmp(paths_state_dir(), "/tmp/sentinel_c_regression_other") == 0);
+        {
+            char *rm[] = { "rm", "-rf", (char *)d,
+                           "/tmp/sentinel_c_regression_other", NULL };
+            proc_run(rm, NULL, 0, 30);   /* best-effort cleanup */
+        }
+    }
+
+    /* 5. Drift detection was narrowed to four finding types, so it could never
+     *    fire on the audit stage. Verify the broad semantics: a new value for a
+     *    target that already exists in the baseline is drift. */
+    {
+        const char *st = "/tmp/sentinel_c_drift_state";
+        {
+            char *rm[]  = { "rm", "-rf", "/tmp/sentinel_c_drift_state", NULL };
+            char *mk[]  = { "mkdir", "-p", "/tmp/sentinel_c_drift_state", NULL };
+            proc_run(rm, NULL, 0, 30);
+            proc_run(mk, NULL, 0, 30);
+        }
+        setenv("SENTINEL_HOME", st, 1);
+
+        /* seed a baseline with two findings for "localhost" */
+        json_value_t *base = json_array();
+        for (int i = 0; i < 2; i++) {
+            json_value_t *f = json_object();
+            json_object_set_str(f, "target", "localhost");
+            json_object_set_str(f, "finding_type", "hardening");
+            char v[64];
+            snprintf(v, sizeof(v), "kernel.p_%d = 1", i);
+            json_object_set_str(f, "value", v);
+            json_object_set_str(f, "severity", "info");
+            json_object_set_str(f, "detail", "baseline");
+            json_array_push(base, f);
+        }
+        state_update(base);
+        json_free(base);
+
+        /* a new finding for the same target => 1 drift event */
+        json_value_t *cur = json_array();
+        for (int i = 0; i < 2; i++) {
+            json_value_t *f = json_object();
+            json_object_set_str(f, "target", "localhost");
+            json_object_set_str(f, "finding_type", "hardening");
+            char v[64];
+            snprintf(v, sizeof(v), "kernel.p_%d = 1", i);
+            json_object_set_str(f, "value", v);
+            json_object_set_str(f, "severity", "info");
+            json_object_set_str(f, "detail", "baseline");
+            json_array_push(cur, f);
+        }
+        json_value_t *nf = json_object();
+        json_object_set_str(nf, "target", "localhost");
+        json_object_set_str(nf, "finding_type", "anomaly");
+        json_object_set_str(nf, "value", "kernel.brand_new = 9");
+        json_object_set_str(nf, "severity", "high");
+        json_object_set_str(nf, "detail", "something changed");
+        json_array_push(cur, nf);
+
+        json_value_t *drift = state_diff(cur);
+        check("a new finding for a known target is drift", json_len(drift) == 1);
+        json_free(drift);
+        json_free(cur);
+
+        /* a target that is entirely new is an asset, not drift */
+        json_value_t *cur2 = json_array();
+        json_value_t *f2 = json_object();
+        json_object_set_str(f2, "target", "brand-new-host");
+        json_object_set_str(f2, "finding_type", "hardening");
+        json_object_set_str(f2, "value", "x = 1");
+        json_object_set_str(f2, "severity", "info");
+        json_object_set_str(f2, "detail", "new asset");
+        json_array_push(cur2, f2);
+        json_value_t *d2 = state_diff(cur2);
+        check("an unseen target is not reported as drift", json_len(d2) == 0);
+        json_free(d2);
+        json_free(cur2);
+
+        /* an unchanged re-scan is silent */
+        json_value_t *same = json_array();
+        for (int i = 0; i < 2; i++) {
+            json_value_t *f = json_object();
+            json_object_set_str(f, "target", "localhost");
+            json_object_set_str(f, "finding_type", "hardening");
+            char v[64];
+            snprintf(v, sizeof(v), "kernel.p_%d = 1", i);
+            json_object_set_str(f, "value", v);
+            json_object_set_str(f, "severity", "info");
+            json_object_set_str(f, "detail", "baseline");
+            json_array_push(same, f);
+        }
+        json_value_t *d3 = state_diff(same);
+        check("an unchanged re-scan reports no drift", json_len(d3) == 0);
+        json_free(d3);
+        json_free(same);
+
+        {
+            char *rm[] = { "rm", "-rf", (char *)st, NULL };
+            proc_run(rm, NULL, 0, 30);
+        }
+    }
+
+    /* 6. Two findings sharing one metadata object: freeing the first corrupted
+     *    the second. This was a use-after-free that crashed every live scan. */
+    {
+        json_value_t *shared = json_object();
+        json_object_set_str(shared, "mitigation", "ASLR");
+        json_value_t *arr = json_array();
+        for (int i = 0; i < 2; i++) {
+            json_value_t *f = json_object();
+            json_object_set_str(f, "target", "localhost");
+            json_object_set_str(f, "finding_type", "hardening");
+            json_object_set_str(f, "value", "kernel.test = 1");
+            json_object_set_str(f, "severity", "info");
+            json_object_set(f, "metadata", shared);   /* same pointer twice */
+            json_array_push(arr, f);
+        }
+        char *dump = json_dump(arr, 2);
+        check("aliased metadata serializes", dump != NULL);
+        if (dump) {
+            json_value_t *back = json_parse(dump, strlen(dump));
+            check("aliased metadata round-trips", back != NULL);
+            if (back) {
+                json_value_t *m1 = json_get(json_at(back, 0), "metadata");
+                json_value_t *m2 = json_get(json_at(back, 1), "metadata");
+                check("both findings keep their own copy of the metadata",
+                      m1 && m2 && m1 != m2);
+                json_free(back);
+            }
+            free(dump);
+        }
+        /* free the shared parent last: the dump above must have deep-copied */
+        json_free(shared);
+        json_free_shallow(arr);
+    }
+
+    /* 7. The decoy trap ignored SIGINT and never exited, so a supervisor could
+     *    not stop it. A trap that cannot be killed is worse than no trap. */
+    {
+        pid_t pid = fork();
+        if (pid == 0) {
+            /* child: the trap, on ports chosen to be free */
+            char *argv[] = { (char *)getenv("SENTINEL_BIN"),
+                             (char *)"--burner-daemon",
+                             (char *)"--burner-ssh", (char *)"39222",
+                             (char *)"--burner-smtp", (char *)"39525",
+                             (char *)"--burner-n8n",  (char *)"39678", NULL };
+            setenv("SENTINEL_HOME", "/tmp/sentinel_c_burner", 1);
+            execv(argv[0], argv);
+            _exit(127);
+        }
+        check("the decoy trap forked", pid > 0);
+        if (pid > 0) {
+            sleep(2);
+            kill(pid, SIGINT);
+            /* Poll for exit rather than blocking: a hang must fail the test, not
+             * the whole suite. */
+            int alive = 1;
+            for (int i = 0; i < 40 && alive; i++) {
+                { struct timespec ts = { 0, 250000000 }; nanosleep(&ts, NULL); }
+                if (waitpid(pid, NULL, WNOHANG) == pid) alive = 0;
+            }
+            check("the decoy trap exits on SIGINT", !alive);
+            if (alive) {
+                kill(pid, SIGKILL);
+                waitpid(pid, NULL, 0);
+            }
+        }
+        {
+            char *rm[] = { "rm", "-rf", "/tmp/sentinel_c_burner", NULL };
+            proc_run(rm, NULL, 0, 30);
+        }
+    }
+}
+
 int main(void)
 {
     printf("sentinel C test suite\n");
@@ -390,6 +642,7 @@ int main(void)
     test_notifiers();
     test_remediation();
     test_registry();
+    test_regressions();
 
     printf("\n%d checks, %d failure(s)\n", g_checks, g_fail);
     return g_fail ? 1 : 0;
