@@ -99,3 +99,94 @@ jobs:
         run: |
           gcc -O3 -Wall -Wextra -Werror -std=c99 -c src/sentineld.c -o /dev/null
           echo "no warnings under -Wall -Wextra -Werror"
+
+  # The C99 agent is the primary implementation. It gets its own job so a
+  # regression there is not masked by the Python matrix still passing.
+  c-agent:
+    name: C99 agent
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install the C toolchain and TLS headers
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq gcc libc6-dev libssl-dev
+
+      - name: Build all binaries
+        run: make all
+
+      - name: Run the C test suite and the daemon self-test
+        env:
+          SENTINEL_HOME: ${{ runner.temp }}/sentinel-c-state
+        run: make test
+
+      # Every plugin must compile standalone, which is what keeps one plugin's
+      # missing include from being masked by another translation unit.
+      - name: Verify each plugin compiles in isolation
+        run: |
+          fail=0
+          for f in src/plugins/*.c; do
+            if ! gcc -O2 -Wall -Wextra -Werror -std=c99 -Iinclude -c "$f" -o /dev/null 2>/tmp/err; then
+              echo "::error::$f does not compile in isolation"
+              cat /tmp/err
+              fail=1
+            fi
+          done
+          [ "$fail" -eq 0 ] && echo "all plugins compile standalone"
+
+      - name: Verify the state directory was not polluted
+        env:
+          SENTINEL_HOME: ${{ runner.temp }}/sentinel-c-state
+        run: |
+          if [ -e "$HOME/.sentinel" ]; then
+            echo "::error::C tests wrote to the real ~/.sentinel"
+            ls -la "$HOME/.sentinel"
+            exit 1
+          fi
+
+      - name: Smoke test a real scan
+        env:
+          SENTINEL_HOME: ${{ runner.temp }}/sentinel-c-smoke
+        run: |
+          cd "$RUNNER_TEMP"
+          "$GITHUB_WORKSPACE/bin/sentinel" localhost --stages audit \
+            --out smoke.json --report smoke.html --sarif smoke.sarif
+          python3 - <<'PY'
+          import json
+          findings = json.load(open("smoke.json"))
+          assert findings, "scan produced no findings"
+          sarif = json.load(open("smoke.sarif"))
+          assert sarif["version"] == "2.1.0"
+          html = open("smoke.html").read()
+          assert "<script>alert" not in html, "unescaped payload reached the report"
+          print(f"smoke scan ok: {len(findings)} findings, "
+                f"{len(sarif['runs'][0]['results'])} sarif results")
+          PY
+
+      # C99 plus ASan/UBSan: the Python could not be run this way, and it is
+      # what caught the metadata aliasing use-after-free.
+      - name: Sanitizer run
+        env:
+          SENTINEL_HOME: ${{ runner.temp }}/sentinel-c-asan
+        run: |
+          gcc -g -O1 -fsanitize=address,undefined -fno-omit-frame-pointer \
+              -std=c99 -Iinclude -D_POSIX_C_SOURCE=200809L \
+              -o sentinel_asan src/cli.c src/core/*.c src/plugins/*.c \
+              -lssl -lcrypto
+          cd "$RUNNER_TEMP"
+          ASAN_OPTIONS=detect_leaks=1 "$GITHUB_WORKSPACE/sentinel_asan" \
+            localhost --stages audit --out asan.json
+          echo "no leaks or undefined behaviour"
+
+      # The daemon is the piece meant to sit resident on a small host, so it is
+      # the one that must build tiny. The agent cannot: it needs OpenSSL for
+      # TLS and musl toolchains ship no OpenSSL headers.
+      - name: Verify a static musl daemon build
+        run: |
+          sudo apt-get install -y -qq musl-tools
+          make static
+          ./bin/sentineld --self-test
+          echo "static daemon build ok"
