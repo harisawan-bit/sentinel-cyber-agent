@@ -10,34 +10,19 @@
 #include <stdlib.h>
 #include <string.h>
 
+/* read_file() is provided by util.h */
+
 void config_init(sentinel_config_t *config)
 {
     memset(config, 0, sizeof(*config));
     config->interval = 300;
 }
 
-static char *read_file(const char *path, size_t *out_len)
-{
-    FILE *f = fopen(path, "rb");
-    if (!f) return NULL;
-    fseek(f, 0, SEEK_END);
-    long len = ftell(f);
-    fseek(f, 0, SEEK_SET);
-    if (len < 0) { fclose(f); return NULL; }
-    char *data = malloc((size_t)len + 1);
-    if (!data) { fclose(f); return NULL; }
-    size_t n = fread(data, 1, (size_t)len, f);
-    fclose(f);
-    data[n] = '\0';
-    if (out_len) *out_len = n;
-    return data;
-}
-
 int config_load(sentinel_config_t *config, const char *path)
 {
     if (!config || !path) return 0;
 
-    size_t len;
+    size_t len = 0;
     char *text = read_file(path, &len);
     if (!text) return 0;
 
@@ -97,6 +82,7 @@ int config_save(const sentinel_config_t *config, const char *path)
             json_array_push(arr, json_string(config->stages[i]));
         json_object_set(root, "stages", arr);
     }
+    (void)config;
 
     char *dump = json_dump(root, 2);
     json_free(root);

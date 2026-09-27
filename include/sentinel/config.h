@@ -1,6 +1,8 @@
 #ifndef SENTINEL_CONFIG_H
 #define SENTINEL_CONFIG_H
 
+#include <stddef.h>
+
 /* Locate an engine binary. Prefers ./bin/<name> (the vendored copy installed by
  * scripts/install_engines.py) and falls back to PATH resolution by the caller.
  * Returns `name` unchanged when neither exists, so it can be handed straight to
