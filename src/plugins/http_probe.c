@@ -150,11 +150,7 @@ static int run(orchestrator_t *ctx, const char *target)
          * status, body and content_type, so the tech list carries what can be
          * derived from the body. content_type is recorded separately below. */
         if (find_ci(resp.body, snip, "wordpress")) {
-            json_value_t *t = json_array();
-            json_array_push(t, json_string("CMS=WordPress"));
-            for (size_t k = 0; k < json_len(tech) && k < TECH_MAX; k++)
-                json_array_push(tech, json_at(t, k));
-            json_free(t);
+            json_array_push(tech, json_string("CMS=WordPress"));
         }
 
         char *title = extract_title(resp.body, snip);

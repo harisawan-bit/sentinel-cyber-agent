@@ -5,6 +5,74 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.5.0] - 2026-09-27
+
+The agent is now C99. The Python implementation is removed, not deprecated.
+
+### Added
+
+- `scripts/install.sh` — builds, runs the daemon self-test and a real scan, and
+  only then replaces the installed binary. A broken build can no longer take out
+  a working install.
+- `Dockerfile` — multi-stage, non-root by default, with a build-time scan so a
+  broken image fails in CI rather than at someone's first `docker run`.
+- `--install-systemd` and `--burner-daemon`, closing the last two gaps in
+  command-line parity with the Python agent.
+- `--burner-ssh` / `--burner-smtp` / `--burner-n8n` so the decoy trap cannot
+  collide with a real service.
+- A repository-hygiene CI job that fails on shell-string execution, hardcoded
+  state paths, unregistered plugins, and stale documentation references.
+- Regression tests for every defect fixed in this release.
+
+### Fixed
+
+Bugs that shipped and affected real scans:
+
+- **Chunked HTTP responses were decoded from the first packet only.** A
+  1.75 MB threat feed arrived as 3.6 KB of still-valid JSON, so KEV correlation
+  reported every CVE as unexploited in the wild. A security tool failing
+  silently in the dangerous direction.
+- **Drift detection could never fire on the audit stage.** The C port had
+  narrowed it to four finding types; the Python compared every finding for a
+  known target. State drift now matches the original semantics.
+- **Truncated JSON was accepted as valid.** `{"a":` parsed as an empty object,
+  turning a partial response into a successful-looking empty result.
+- **Content-Type was read one byte past its value,** so every `text/html` came
+  back as `ext/html` and `chunked` encoding went undetected.
+- **The decoy trap ignored SIGINT and could not be stopped.**
+- **Two double frees.** Moving JSON children between trees and then freeing the
+  source recursively, in the trap's log writer and the HTTP tech detector.
+- **A use-after-free on every live scan,** where two findings shared one
+  metadata object.
+- **`SENTINEL_HOME` was read once per process,** so state could not be relocated
+  after the first call.
+- Four defects in the Python agent, all live: `fim` and `cert_audit` never
+  produced a finding because of unhandled exceptions, `crtsh` raised on any
+  `http://` target, and `host_harden` reported a hardcoded value for two sysctls.
+
+### Changed
+
+- The agent and daemon are C99 throughout. `-std=c99 -Wall -Wextra -Werror` with
+  no exceptions, plus per-plugin isolated compilation in CI.
+- CI builds on Linux x86-64, Linux arm64, and macOS arm64, and runs
+  AddressSanitizer with UndefinedBehaviorSanitizer and leak detection on every
+  change.
+- `make static` now builds only the daemon and says so. It previously claimed to
+  build everything and failed with a missing-header error, because the agent
+  needs OpenSSL and musl toolchains ship no OpenSSL headers.
+
+### Known limitations
+
+- The agent links system OpenSSL. C99 has no TLS, and a vendored TLS stack would
+  be a larger security liability than the dependency. The daemon is unaffected
+  and builds fully static.
+- `sigma` evaluates rule identifiers and severities but not regular expressions,
+  which C99 does not provide.
+- `http_probe` derives technologies from the response body; header-derived hints
+  are not ported.
+- The audit stage reads `/proc` and sysctls, so it is meaningful on Linux and
+  thin on macOS.
+
 ## [Unreleased]
 
 ### Fixed

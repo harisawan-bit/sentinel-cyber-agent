@@ -35,6 +35,7 @@ typedef struct {
     const char *desc;      /* human-readable impact, mirrored from the Python */
 } fix_param_t;
 
+#if defined(__linux__)
 static const fix_param_t FIX_PARAMS[] = {
     { "kernel.randomize_va_space", "2", "/proc/sys/kernel/randomize_va_space",
       "Full ASLR (Heap/Stack/VDSO randomization)" },
@@ -63,11 +64,14 @@ static const fix_param_t FIX_PARAMS[] = {
     { "net.ipv4.icmp_echo_ignore_broadcasts", "1", "/proc/sys/net/ipv4/icmp_echo_ignore_broadcasts",
       "Ignores broadcast ICMP echoes (smurf attack prevention)" }
 };
+#endif
 
 /* CapEff bitmasks that mean "every capability the kernel knows about". */
+#if defined(__linux__)
 static const char *PRIVILEGED_CAPEFF[] = {
     "0000003fffffffff", "000001ffffffffff"
 };
+#endif
 
 /* ------------------------------------------------------------------ helpers */
 
@@ -96,6 +100,8 @@ static char *scrub(char *s)
     return str_trim(s);
 }
 
+#if defined(__linux__)
+/* Sysctl and procfs helper: Linux only. */
 /* "key = value" — the shape every sysctl finding value takes in the Python. */
 static char *kv(const char *key, const char *val)
 {
@@ -103,6 +109,8 @@ static char *kv(const char *key, const char *val)
     buf_printf(&b, "%s = %s", key, val);
     return buf_release(&b);
 }
+#endif
+
 
 /* Walk a NUL-terminated blob one line at a time, destructively. Returns NULL
  * at the end of the buffer. */
@@ -133,6 +141,8 @@ static int split_ws(char *line, char **out, int max)
     return n;
 }
 
+#if defined(__linux__)
+/* Sysctl and procfs helper: Linux only. */
 /* Exact membership test against a comma-separated mount option string. A
  * substring test would be wrong: "nodev" contains "dev", "nosuid" is a prefix
  * of nothing, but the general case is unsafe. */
@@ -149,6 +159,8 @@ static int has_mount_opt(const char *opts, const char *want)
     }
     return 0;
 }
+#endif
+
 
 static void emit(orchestrator_t *ctx, finding_type_t type, severity_t sev,
                  const char *value, const char *detail, json_value_t *meta)
@@ -160,6 +172,8 @@ static void emit(orchestrator_t *ctx, finding_type_t type, severity_t sev,
     orch_add(ctx, f);
 }
 
+#if defined(__linux__)
+/* Sysctl and procfs helper: Linux only. */
 /* The mitigation/status metadata shape the Python repeated on every sysctl
  * finding. report.c keys its "Kernel Mitigation" category off "mitigation". */
 static void emit_mitigation(orchestrator_t *ctx, severity_t sev,
@@ -175,7 +189,11 @@ static void emit_mitigation(orchestrator_t *ctx, severity_t sev,
     }
     emit(ctx, FT_HARDENING, sev, value, detail, m);
 }
+#endif
 
+
+#if defined(__linux__)
+/* Sysctl and procfs helper: Linux only. */
 /* ------------------------------------------------------------ kernel sysctls */
 
 /* Read one /proc/sys knob. A knob that will not open is appended to `unread`
@@ -197,7 +215,11 @@ static char *read_knob(buf_t *unread, const char *path)
     }
     return scrub(v);
 }
+#endif
 
+
+#if defined(__linux__)
+/* Reads sysctls, /proc/mounts, and the Docker socket: Linux only. */
 static void audit_kernel(orchestrator_t *ctx)
 {
     buf_t unread;
@@ -375,7 +397,11 @@ static void audit_kernel(orchestrator_t *ctx)
     }
     buf_free(&unread);
 }
+#endif
 
+
+#if defined(__linux__)
+/* Reads sysctls, /proc/mounts, and the Docker socket: Linux only. */
 /* ------------------------------------------------------------ shared mounts */
 
 /* A world-writable mount without noexec/nosuid/nodev is the standard staging
@@ -464,7 +490,11 @@ static void audit_mounts(orchestrator_t *ctx)
         free(opts[s]);
     }
 }
+#endif
 
+
+#if defined(__linux__)
+/* Reads sysctls, /proc/mounts, and the Docker socket: Linux only. */
 /* ----------------------------------------------------- container escape risk */
 
 static void audit_container(orchestrator_t *ctx)
@@ -514,6 +544,8 @@ static void audit_container(orchestrator_t *ctx)
         free(text);
     }
 }
+#endif
+
 
 /* ------------------------------------------------------------- sshd posture */
 
@@ -573,6 +605,8 @@ static void audit_sshd(orchestrator_t *ctx)
     }
 }
 
+#if defined(__linux__)
+/* Reads sysctls, /proc/mounts, and the Docker socket: Linux only. */
 /* ------------------------------------------------------- kernel remediation */
 
 /* Byte-for-byte the profile sentinel/core/remediation.py generates. The em
@@ -593,7 +627,11 @@ static char *generate_hardening_conf(void)
     }
     return buf_release(&b);
 }
+#endif
 
+
+#if defined(__linux__)
+/* Reads sysctls, /proc/mounts, and the Docker socket: Linux only. */
 static int env_flag(const char *name)
 {
     const char *v = getenv(name);
@@ -601,6 +639,8 @@ static int env_flag(const char *name)
     if (str_ieq(v, "0") || str_ieq(v, "false") || str_ieq(v, "no") || str_ieq(v, "off")) return 0;
     return 1;
 }
+#endif
+
 
 /* The --fix-kernel equivalent of sentinel/cli.py: apply the hardening profile.
  *
@@ -759,11 +799,14 @@ static int run(orchestrator_t *ctx, const char *target)
     if (!ctx || !target) return 0;
     if (!audit_applies(ctx, target)) return 0;
 
+    /* sshd_config hardening applies wherever OpenSSH is installed, which
+     * includes macOS, so this check is not behind the platform guard. */
+    audit_sshd(ctx);
+
 #if defined(__linux__)
     audit_kernel(ctx);
     audit_mounts(ctx);
     audit_container(ctx);
-    audit_sshd(ctx);
     /* SENTINEL_FIX_KERNEL is the plugin-side equivalent of the Python CLI's
      * --fix-kernel flag, which remediation.py handled outside the plugin. The
      * plugin interface carries no flags, so the CLI sets the environment

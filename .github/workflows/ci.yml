@@ -10,117 +10,48 @@ permissions:
   contents: read
 
 jobs:
-  test:
-    name: Test (Python ${{ matrix.python-version }})
-    runs-on: ubuntu-latest
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.10", "3.11", "3.12", "3.13"]
+        include:
+          - name: Linux x86-64
+            os: ubuntu-latest
+            cc: gcc
+          - name: Linux arm64
+            os: ubuntu-24.04-arm
+            cc: gcc
+          - name: macOS arm64
+            os: macos-14
+            cc: clang
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ matrix.python-version }}
-
-      - name: Install dependencies
+      - name: Install the toolchain and TLS headers
         run: |
-          python -m pip install --upgrade pip
-          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
-          pip install pytest
-
-      # The suite is plain `python`, not pytest, so it runs on any interpreter.
-      # Test files sandbox SENTINEL_HOME themselves; the extra export below is
-      # a belt-and-braces guard so a leak can never touch the runner's home.
-      - name: Run unit tests
-        env:
-          SENTINEL_HOME: ${{ runner.temp }}/sentinel-ci-state
-        run: |
-          for t in tests/test_*.py; do
-            echo "::group::$t"
-            python "$t"
-            echo "::endgroup::"
-          done
-
-      - name: Run tests under pytest
-        env:
-          SENTINEL_HOME: ${{ runner.temp }}/sentinel-ci-state-pytest
-        run: python -m pytest tests/ -q
-
-      - name: Verify the state directory was not polluted
-        env:
-          SENTINEL_HOME: ${{ runner.temp }}/sentinel-ci-state
-        run: |
-          if [ -e "$HOME/.sentinel" ]; then
-            echo "::error::tests wrote to the real ~/.sentinel"
-            ls -la "$HOME/.sentinel"
-            exit 1
+          if [ "$RUNNER_OS" = "Linux" ]; then
+            sudo apt-get update -qq
+            sudo apt-get install -y -qq build-essential libssl-dev
+          else
+            # Homebrew's OpenSSL is keg-only, so it is not on the default
+            # include or library path. The Makefile uses `?=` for CFLAGS and
+            # LDFLAGS, so exporting them is enough to redirect the build.
+            PREFIX_OPENSSL="$(brew --prefix openssl@3)"
+            echo "CFLAGS=-I${PREFIX_OPENSSL}/include -O2 -Wall -Wextra -Werror -std=c99" >> "$GITHUB_ENV"
+            echo "LDFLAGS=-L${PREFIX_OPENSSL}/lib" >> "$GITHUB_ENV"
+            echo "using OpenSSL at ${PREFIX_OPENSSL}"
           fi
 
-      - name: Verify zero third-party imports in the agent core
-        run: |
-          python - <<'PY'
-          import ast, os, sys
-          std = set(sys.stdlib_module_names)
-          offenders = []
-          for root, _, files in os.walk("sentinel"):
-              for f in files:
-                  if not f.endswith(".py"):
-                      continue
-                  path = os.path.join(root, f)
-                  tree = ast.parse(open(path, encoding="utf-8").read())
-                  for node in ast.walk(tree):
-                      mods = []
-                      if isinstance(node, ast.Import):
-                          mods = [a.name.split(".")[0] for a in node.names]
-                      elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
-                          mods = [node.module.split(".")[0]]
-                      for m in mods:
-                          if m not in std and m != "sentinel":
-                              offenders.append(f"{path}: {m}")
-          if offenders:
-              print("::error::undeclared third-party imports in the agent core")
-              for o in offenders:
-                  print("  " + o)
-              sys.exit(1)
-          print("agent core is standard-library only")
-          PY
-
-      - name: Build and test native C99 daemon
-        run: |
-          make
-          make test
-
-      - name: Build with strict warnings
-        run: |
-          gcc -O3 -Wall -Wextra -Werror -std=c99 -c src/sentineld.c -o /dev/null
-          echo "no warnings under -Wall -Wextra -Werror"
-
-  # The C99 agent is the primary implementation. It gets its own job so a
-  # regression there is not masked by the Python matrix still passing.
-  c-agent:
-    name: C99 agent
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Install the C toolchain and TLS headers
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq gcc libc6-dev libssl-dev
-
-      - name: Build all binaries
+      - name: Build everything
         run: make all
 
-      - name: Run the C test suite and the daemon self-test
+      - name: Run the test suite
         env:
-          SENTINEL_HOME: ${{ runner.temp }}/sentinel-c-state
+          SENTINEL_HOME: ${{ runner.temp }}/sentinel-state
         run: make test
 
       # Every plugin must compile standalone, which is what keeps one plugin's
@@ -129,7 +60,8 @@ jobs:
         run: |
           fail=0
           for f in src/plugins/*.c; do
-            if ! gcc -O2 -Wall -Wextra -Werror -std=c99 -Iinclude -c "$f" -o /dev/null 2>/tmp/err; then
+            if ! ${{ matrix.cc }} ${CFLAGS:--O2 -Wall -Wextra -Werror -std=c99} \
+                 -Iinclude -c "$f" -o /dev/null 2>/tmp/err; then
               echo "::error::$f does not compile in isolation"
               cat /tmp/err
               fail=1
@@ -139,17 +71,17 @@ jobs:
 
       - name: Verify the state directory was not polluted
         env:
-          SENTINEL_HOME: ${{ runner.temp }}/sentinel-c-state
+          SENTINEL_HOME: ${{ runner.temp }}/sentinel-state
         run: |
           if [ -e "$HOME/.sentinel" ]; then
-            echo "::error::C tests wrote to the real ~/.sentinel"
+            echo "::error::tests wrote to the real ~/.sentinel"
             ls -la "$HOME/.sentinel"
             exit 1
           fi
 
       - name: Smoke test a real scan
         env:
-          SENTINEL_HOME: ${{ runner.temp }}/sentinel-c-smoke
+          SENTINEL_HOME: ${{ runner.temp }}/sentinel-smoke
         run: |
           cd "$RUNNER_TEMP"
           "$GITHUB_WORKSPACE/bin/sentinel" localhost --stages audit \
@@ -159,34 +91,273 @@ jobs:
           findings = json.load(open("smoke.json"))
           assert findings, "scan produced no findings"
           sarif = json.load(open("smoke.sarif"))
-          assert sarif["version"] == "2.1.0"
+          assert sarif["version"] == "2.1.0", sarif["version"]
+          assert sarif["runs"][0]["results"], "sarif carried no results"
           html = open("smoke.html").read()
           assert "<script>alert" not in html, "unescaped payload reached the report"
           print(f"smoke scan ok: {len(findings)} findings, "
                 f"{len(sarif['runs'][0]['results'])} sarif results")
           PY
 
-      # C99 plus ASan/UBSan: the Python could not be run this way, and it is
-      # what caught the metadata aliasing use-after-free.
-      - name: Sanitizer run
+      # The burner trap is a listener, so a busy port is the realistic failure
+      # mode here. Assert it arms, logs a hit, and shuts down on SIGINT.
+      - name: Smoke test the decoy trap
         env:
-          SENTINEL_HOME: ${{ runner.temp }}/sentinel-c-asan
+          SENTINEL_HOME: ${{ runner.temp }}/sentinel-burner
+        run: |
+          cd "$RUNNER_TEMP"
+          "$GITHUB_WORKSPACE/bin/sentinel" --burner-daemon \
+            --burner-ssh 32222 --burner-smtp 32525 --burner-n8n 35678 &
+          trap_pid=$!
+          sleep 2
+          python3 - <<'PY'
+          import json, socket
+          for port, probe in ((32222, b"USER root\r\n"),
+                              (32525, b"EHLO x\r\n"),
+                              (35678, b'{"canary":1}')):
+              s = socket.create_connection(("127.0.0.1", port), timeout=5)
+              s.settimeout(3)
+              s.recv(256)
+              s.sendall(probe)
+              s.close()
+          print("hit all three decoy ports")
+          PY
+          kill -INT $trap_pid
+          wait $trap_pid || true
+          python3 - <<'PY'
+          import json, os
+          home = os.environ["SENTINEL_HOME"]
+          log = os.path.join(home, "burner_traps.json")
+          assert os.path.exists(log), "the trap logged nothing"
+          events = json.load(open(log))
+          assert len(events) == 3, f"expected 3 events, got {len(events)}"
+          for e in events:
+              assert e["service"] and e["remote_ip"] and e["payload"] is not None
+          print("decoy trap logged 3 events and exited cleanly")
+          PY
+
+  sanitizers:
+    name: ASan + UBSan
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install the toolchain and TLS headers
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq build-essential libssl-dev
+
+      # What caught the metadata aliasing use-after-free, and the double free in
+      # the trap's log writer. Kept as a separate job so a failure here is
+      # unambiguous rather than buried in a general test failure.
+      - name: Build with AddressSanitizer and UndefinedBehaviorSanitizer
         run: |
           gcc -g -O1 -fsanitize=address,undefined -fno-omit-frame-pointer \
               -std=c99 -Iinclude -D_POSIX_C_SOURCE=200809L \
               -o sentinel_asan src/cli.c src/core/*.c src/plugins/*.c \
               -lssl -lcrypto
+
+      - name: Run a full audit under the sanitizers
+        env:
+          SENTINEL_HOME: ${{ runner.temp }}/sentinel-asan
+          ASAN_OPTIONS: detect_leaks=1
+          UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
+        run: |
           cd "$RUNNER_TEMP"
-          ASAN_OPTIONS=detect_leaks=1 "$GITHUB_WORKSPACE/sentinel_asan" \
-            localhost --stages audit --out asan.json
-          echo "no leaks or undefined behaviour"
+          "$GITHUB_WORKSPACE/sentinel_asan" localhost --stages audit --out asan.json
+          "$GITHUB_WORKSPACE/sentinel_asan" localhost --stages intel --out intel.json
+          echo "no leaks and no undefined behaviour"
+
+      - name: Run the test suite under the sanitizers
+        env:
+          SENTINEL_HOME: ${{ runner.temp }}/sentinel-asan-tests
+          ASAN_OPTIONS: detect_leaks=1
+        run: |
+          gcc -g -O1 -fsanitize=address,undefined -fno-omit-frame-pointer \
+              -std=c99 -Iinclude -D_POSIX_C_SOURCE=200809L \
+              -o sentinel_tests_asan tests/test_main.c src/core/*.c \
+              src/plugins/*.c -lssl -lcrypto
+          # The harness itself intentionally leaks nothing it can reach, but a
+          # leak report here is noise about the test scaffolding, not about
+          # shipped code. The agent build above is the assertion that matters.
+          ASAN_OPTIONS=detect_leaks=0 ./sentinel_tests_asan
+
+  static:
+    name: static musl
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install musl
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq musl-tools
 
       # The daemon is the piece meant to sit resident on a small host, so it is
       # the one that must build tiny. The agent cannot: it needs OpenSSL for
       # TLS and musl toolchains ship no OpenSSL headers.
-      - name: Verify a static musl daemon build
+      - name: Build the static daemon
         run: |
-          sudo apt-get install -y -qq musl-tools
           make static
           ./bin/sentineld --self-test
           echo "static daemon build ok"
+
+      # The static agent is the "one file, no dependencies" story. It is built
+      # with glibc rather than musl because net.c needs OpenSSL and musl
+      # toolchains ship no OpenSSL headers.
+      - name: Build and verify the static agent
+        run: |
+          make static-agent
+          ldd bin/sentinel-static 2>&1 | grep -q 'not a dynamic' \
+            || { echo "::error::the static agent still has shared libraries"; exit 1; }
+          echo "static agent has no shared library dependencies"
+
+  installer:
+    name: installer
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install the toolchain and TLS headers
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq build-essential libssl-dev
+
+      - name: Verify the installer works end to end
+        run: |
+          PREFIX=/tmp/prefix ./scripts/install.sh
+          /tmp/prefix/bin/sentinel --version
+          test -x /tmp/prefix/bin/sentineld
+          echo "installer ok"
+
+  container:
+    name: container
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # The image build itself runs a scan, so a broken Dockerfile fails here
+      # rather than at someone's first `docker run`.
+      - name: Build the image
+        run: docker build -t sentinel .
+
+      # The agent runs as the unprivileged sentinel user, so the output
+      # directory has to be writable by that uid: a root-owned bind mount is
+      # the realistic case and it must work, not just the --user override.
+      - name: Run the agent from the image
+        run: |
+          mkdir -p /tmp/out
+          chmod 777 /tmp/out
+          docker run --rm -v /tmp/out:/out sentinel \
+            localhost --stages audit --report /out/report.html --out /out/findings.json
+          test -s /tmp/out/report.html
+          test -s /tmp/out/findings.json
+          echo "container ok"
+
+      - name: Verify the image does not run as root
+        run: |
+          uid=$(docker run --rm --entrypoint id sentinel -u)
+          echo "container uid: $uid"
+          if [ "$uid" = "0" ]; then
+            echo "::error::the image runs as root; it must default to unprivileged"
+            exit 1
+          fi
+          echo "container defaults to unprivileged"
+
+  hygiene:
+    name: repository hygiene
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # The property that keeps the C99 rewrite honest: no shell-string
+      # execution anywhere in tracked source. Comments are stripped first, so
+      # prose mentioning system() or using backticks is not a false positive.
+      - name: No shell-string execution
+        run: |
+          python3 - <<'PY'
+          import re, subprocess, sys
+          bad = []
+          files = subprocess.run(["git", "ls-files", "*.c", "*.h"],
+                                 capture_output=True, text=True).stdout.split()
+          for path in files:
+              src = open(path, errors="replace").read()
+              code = re.sub(r"/\*.*?\*/", "", src, flags=re.S)
+              code = re.sub(r"//[^\n]*", "", code)
+              for line in code.splitlines():
+                  if "`" in line or re.search(r"\b(system|popen)\s*\(", line):
+                      bad.append(f"{path}: {line.strip()[:70]}")
+          if bad:
+              print("::error::shell-string execution found; use proc_run() with argv")
+              for b in bad:
+                  print("  " + b)
+              sys.exit(1)
+          print(f"no shell-string execution in {len(files)} tracked source files")
+          PY
+
+      # macOS clang rejects any function or constant that is compiled but
+      # never referenced, and several plugins only ever call their Linux-only
+      # helpers from inside a platform guard. Compiling with __linux__ removed
+      # reproduces exactly what macOS does, on any runner.
+      - name: Every file compiles with the Linux guard removed
+        run: |
+          fail=0
+          for f in src/core/*.c src/plugins/*.c src/cli.c; do
+            if ! gcc -O2 -Wall -Wextra -Werror -std=c99 -Iinclude \
+                 -D_POSIX_C_SOURCE=200809L -D__APPLE__=1 \
+                 -U__linux__ -Ulinux -U__gnu_linux__ \
+                 -c "$f" -o /dev/null 2>/tmp/err; then
+              echo "::error::$f does not compile off Linux (dead code under a platform guard)"
+              grep 'error:' /tmp/err | head -3
+              fail=1
+            fi
+          done
+          [ "$fail" -eq 0 ] && echo "every file compiles with __linux__ removed"
+
+      - name: No hardcoded state directory
+        run: |
+          if git grep -n '"~/\.sentinel"\|"/home/.*/\.sentinel"' -- '*.c' '*.h'; then
+            echo "::error::hardcoded state directory; use paths_state_dir()"
+            exit 1
+          fi
+          echo "all state goes through paths_state_dir()"
+
+      - name: Every plugin is in the registry
+        run: |
+          for f in src/plugins/*.c; do
+            name=$(basename "$f" .c)
+            if ! git grep -q "$name" -- src/core/registry.c; then
+              echo "::error::$name is not registered in src/core/registry.c"
+              exit 1
+            fi
+          done
+          echo "every plugin is registered"
+
+      - name: Shell scripts are syntactically valid
+        run: |
+          for f in scripts/*.sh; do
+            sh -n "$f" || exit 1
+          done
+          echo "shell scripts parse"
+
+      - name: Documentation has no stale Python references
+        run: |
+          fail=0
+          # Historical changelog entries are allowed to mention the old stack.
+          for f in README.md CONTRIBUTING.md SECURITY.md; do
+            if git grep -nE 'pytest|python3 -m sentinel|sentinel/core/[a-z_]+\.py' -- "$f"; then
+              echo "::error::$f still references the removed Python implementation"
+              fail=1
+            fi
+          done
+          [ "$fail" -eq 0 ] && echo "docs are free of stale Python references"

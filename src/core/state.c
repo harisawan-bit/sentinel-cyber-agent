@@ -87,23 +87,43 @@ json_value_t *state_diff(const json_value_t *current)
     for (size_t i = 0; i < ncur; i++) {
         if (has_key(old_keys, nold, cur_keys[i])) continue;
 
-        /* Only surface new *assets*; a changed severity on an existing finding
-         * is noise, matching the Python behaviour. */
-        if (!strstr(cur_keys[i], "|port|") && !strstr(cur_keys[i], "|host|") &&
-            !strstr(cur_keys[i], "|subdomain|") && !strstr(cur_keys[i], "|technology|"))
-            continue;
+        /* A target that was not in the baseline at all is a new asset, not
+         * drift — reporting every finding for it would be noise on the first
+         * run against a new host. This mirrors the Python's
+         * `if target in prev_state` guard. */
+        {
+            const char *tgt = cur_keys[i];
+            const char *bar = strchr(tgt, '|');
+            size_t tlen = bar ? (size_t)(bar - tgt) : strlen(tgt);
+            int known = 0;
+            for (size_t k = 0; k < nold; k++) {
+                const char *ot = old_keys[k];
+                if (strncmp(ot, tgt, tlen) == 0 && ot[tlen] == '|') { known = 1; break; }
+            }
+            if (!known) continue;
+        }
+
+        /* Any finding that is new for a target we have seen before is drift.
+         * An earlier revision narrowed this to port/host/subdomain/technology,
+         * which meant drift could never fire on the audit stage at all.
+         * A changed severity on an unchanged value is still just noise: the
+         * key is "<target>|<finding_type>|<value>", so a re-run of the same
+         * finding produces the same key and stays silent. */
 
         const json_value_t *f = json_at(current, cur_idx[i]);
         const char *target = json_get_str(f, "target");
-        const char *ftype  = json_get_str(f, "finding_type");
         const char *value  = json_get_str(f, "value");
 
         buf_t d; buf_init(&d);
-        buf_printf(&d, "New %s '%s' on %s was not present in the previous baseline.",
-                   ftype ? ftype : "finding", value ? value : "",
-                   target ? target : "local");
-        finding_t *df = finding_new("state-drift", FT_NOTE, value ? value : cur_keys[i],
-                                    target ? target : "local", SEV_MEDIUM);
+        buf_printf(&d, "[ALERT] [NEW ASSET/FINDING] %s on %s (%s)",
+                   value ? value : "", target ? target : "local",
+                   json_get_str(f, "detail") ? json_get_str(f, "detail") : "");
+        const char *fsev = json_get_str(f, "severity");
+        severity_t sev = (fsev && (strcmp(fsev, "critical") == 0 || strcmp(fsev, "high") == 0))
+                             ? SEV_HIGH : SEV_MEDIUM;
+        finding_t *df = finding_new("state-diff", FT_NOTE,
+                                    value ? value : cur_keys[i],
+                                    target ? target : "local", sev);
         if (df) {
             finding_set_detail(df, d.data);
             json_array_push(drift, finding_to_json(df));
