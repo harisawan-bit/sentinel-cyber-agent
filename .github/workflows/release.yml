@@ -63,7 +63,10 @@ jobs:
           install -m 0644 README.md LICENSE SECURITY.md CHANGELOG.md staging/
 
           tar czf dist/sentinel-linux-amd64.tar.gz -C staging .
-          sha256sum dist/sentinel-linux-amd64.tar.gz > dist/sentinel-linux-amd64.tar.gz.sha256
+          # Write a bare filename, not the build path: `sha256sum -c` is run
+          # by the person downloading this, in their own directory, and a path
+          # prefixed with the build machine's layout fails for every one of them.
+          ( cd dist && sha256sum sentinel-linux-amd64.tar.gz > sentinel-linux-amd64.tar.gz.sha256 )
 
           # A release must not ship a partial archive.
           missing=""
@@ -85,21 +88,30 @@ jobs:
           set -eu
           TAG="${{ inputs.tag || github.ref_name }}"
           NOTES=$(mktemp)
-          # Prefer the changelog section for this tag, fall back to the last one.
-          awk -v tag="$TAG" '
-            $0 ~ "^## \\[" tag "\\]" { grab=1; next }
-            grab && /^## \[/ { exit }
-            grab { print }
-          ' CHANGELOG.md > "$NOTES" || true
+          # The tag carries a v prefix that the changelog heading does not, so
+          # strip it before matching. Extracting the real section matters: a
+          # release note that says "see CHANGELOG.md" is not a release note.
+          VERSION="${TAG#v}"
+          extract_notes() {
+            awk -v ver="$VERSION" '
+              index($0, "## [") == 1 {
+                if (grab) exit
+                if (index($0, "## [" ver "]") == 1) { grab=1; print; next }
+              }
+              grab { print }
+            ' "$1"
+          }
+          extract_notes CHANGELOG.md > "$NOTES"
           if [ ! -s "$NOTES" ]; then
-            git show "$TAG:CHANGELOG.md" 2>/dev/null | \
-              awk -v tag="$TAG" '
-                $0 ~ "^## \\[" tag "\\]" { grab=1; next }
-                grab && /^## \[/ { exit }
-                grab { print }
-              ' > "$NOTES" || true
+            git show "$TAG:CHANGELOG.md" 2>/dev/null > /tmp/notes-src.md 2>/dev/null || true
+            if [ -s /tmp/notes-src.md ]; then extract_notes /tmp/notes-src.md > "$NOTES"; fi
           fi
-          [ -s "$NOTES" ] || printf 'See CHANGELOG.md for details.' > "$NOTES"
+          if [ ! -s "$NOTES" ]; then
+            echo "::warning::no CHANGELOG section found for $VERSION"
+            printf 'See CHANGELOG.md for details.' > "$NOTES"
+          else
+            echo "release notes: $(wc -l < "$NOTES") lines from CHANGELOG.md"
+          fi
 
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release upload "$TAG" dist/sentinel-linux-amd64.tar.gz* --clobber
