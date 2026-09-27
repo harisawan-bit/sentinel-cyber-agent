@@ -119,3 +119,56 @@ int notifier_send_slack(const char *webhook, const char *text)
     tls_close(ssl, fd);
     return ok;
 }
+
+int notifier_send_discord(const char *webhook, const char *text)
+{
+    if (!webhook || !text) return 0;
+    if (strncmp(webhook, "https://", 8) != 0) return 0;
+
+    char host[128] = "discord.com";
+    const char *rest = strstr(webhook, "://");
+    if (rest) {
+        rest += 3;
+        const char *slash = strchr(rest, '/');
+        size_t hl = slash ? (size_t)(slash - rest) : strlen(rest);
+        if (hl >= sizeof(host)) hl = sizeof(host) - 1;
+        memcpy(host, rest, hl);
+        host[hl] = '\0';
+    }
+
+    json_value_t *body = json_object();
+    json_object_set_str(body, "content", text);
+    char *payload = json_dump(body, 0);
+    json_free(body);
+
+    if (!payload) return 0;
+
+    int fd = tcp_connect(host, 443, 20);
+    if (fd < 0) { free(payload); return 0; }
+    void *ssl = tls_connect(fd, host, 1, 20);
+    if (!ssl) { close(fd); free(payload); return 0; }
+
+    const char *path = strstr(webhook, host);
+    if (path) path += strlen(host);
+
+    size_t need = strlen(payload) + 512;
+    char *req = malloc(need);
+    if (!req) { tls_close(ssl, fd); free(payload); return 0; }
+
+    snprintf(req, need,
+             "POST %s HTTP/1.1\r\nHost: %s\r\nContent-Type: application/json\r\n"
+             "Content-Length: %zu\r\nConnection: close\r\n\r\n%s",
+             path ? path : "/", host, strlen(payload), payload);
+    free(payload);
+
+    SSL_write(ssl, req, (int)strlen(req));
+    free(req);
+
+    http_resp r;
+    memset(&r, 0, sizeof(r));
+    http_read_response(fd, ssl, &r);
+    int ok = (r.status == 200);
+    http_resp_free(&r);
+    tls_close(ssl, fd);
+    return ok;
+}

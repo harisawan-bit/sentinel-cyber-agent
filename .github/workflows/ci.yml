@@ -272,6 +272,46 @@ jobs:
           fi
           echo "container defaults to unprivileged"
 
+  perf:
+    name: performance regression gate
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install the toolchain and TLS headers
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq build-essential libssl-dev
+
+      - name: Build everything
+        run: make all
+
+      - name: Run benchmark
+        run: make bench
+
+      - name: Enforce size and startup ceilings
+        run: |
+          DAEMON_SIZE=$(stat -c%s bin/sentineld)
+          AGENT_SIZE=$(stat -c%s bin/sentinel)
+          echo "daemon: ${DAEMON_SIZE} bytes, agent: ${AGENT_SIZE} bytes"
+          if [ "$DAEMON_SIZE" -gt 200000 ]; then
+            echo "::error::daemon binary exceeded 200KB ceiling"
+            exit 1
+          fi
+          if [ "$AGENT_SIZE" -gt 20000000 ]; then
+            echo "::error::agent binary exceeded 20MB ceiling"
+            exit 1
+          fi
+          STARTUP_MS=$( { /usr/bin/time -f "%e" bin/sentinel --version; } 2>&1 )
+          echo "startup: ${STARTUP_MS}s"
+          if (( $(echo "$STARTUP_MS > 0.05" | bc -l) )); then
+            echo "::error::startup exceeded 50ms ceiling"
+            exit 1
+          fi
+          echo "performance regression gate passed"
+
   hygiene:
     name: repository hygiene
     runs-on: ubuntu-latest

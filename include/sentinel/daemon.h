@@ -14,6 +14,7 @@ int daemon_install_systemd(const char *unit, const char *service_name);
 void daemon_run_loop(orchestrator_t *o, const char *const *targets,
                      int interval, unsigned stage_mask, const char *report_path,
                      const char *telegram_token, const char *telegram_chat_id,
-                     const char *slack_webhook, int max_cycles);
+                     const char *slack_webhook, const char *discord_webhook,
+                     int max_cycles);
 
 #endif /* SENTINEL_DAEMON_H */
