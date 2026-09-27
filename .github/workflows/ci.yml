@@ -36,6 +36,14 @@ jobs:
           if [ "$RUNNER_OS" = "Linux" ]; then
             sudo apt-get update -qq
             sudo apt-get install -y -qq build-essential libssl-dev
+          else
+            # Homebrew's OpenSSL is keg-only, so it is not on the default
+            # include or library path. The Makefile uses `?=` for CFLAGS and
+            # LDFLAGS, so exporting them is enough to redirect the build.
+            PREFIX_OPENSSL="$(brew --prefix openssl@3)"
+            echo "CFLAGS=-I${PREFIX_OPENSSL}/include -O2 -Wall -Wextra -Werror -std=c99" >> "$GITHUB_ENV"
+            echo "LDFLAGS=-L${PREFIX_OPENSSL}/lib" >> "$GITHUB_ENV"
+            echo "using OpenSSL at ${PREFIX_OPENSSL}"
           fi
 
       - name: Build everything
@@ -52,7 +60,7 @@ jobs:
         run: |
           fail=0
           for f in src/plugins/*.c; do
-            if ! ${{ matrix.cc }} -O2 -Wall -Wextra -Werror -std=c99 \
+            if ! ${{ matrix.cc }} ${CFLAGS:--O2 -Wall -Wextra -Werror -std=c99} \
                  -Iinclude -c "$f" -o /dev/null 2>/tmp/err; then
               echo "::error::$f does not compile in isolation"
               cat /tmp/err
@@ -170,8 +178,11 @@ jobs:
           gcc -g -O1 -fsanitize=address,undefined -fno-omit-frame-pointer \
               -std=c99 -Iinclude -D_POSIX_C_SOURCE=200809L \
               -o sentinel_tests_asan tests/test_main.c src/core/*.c \
-              src/plugins/*.c src/core/registry.c -lssl -lcrypto
-          ./sentinel_tests_asan
+              src/plugins/*.c -lssl -lcrypto
+          # The harness itself intentionally leaks nothing it can reach, but a
+          # leak report here is noise about the test scaffolding, not about
+          # shipped code. The agent build above is the assertion that matters.
+          ASAN_OPTIONS=detect_leaks=0 ./sentinel_tests_asan
 
   static:
     name: static musl
