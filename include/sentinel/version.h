@@ -1,0 +1,4 @@
+#ifndef SENTINEL_VERSION_H
+#define SENTINEL_VERSION_H
+#define SENTINEL_VERSION "2.5.0"
+#endif

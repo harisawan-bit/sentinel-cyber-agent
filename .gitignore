@@ -8,6 +8,13 @@ dist/
 .pytest_cache/
 .venv/
 
+# C build artifacts
+*.o
+*.a
+*.so
+# Test and tool binaries that do not live in bin/
+sentinel_tests
+
 # Downloaded engine binaries (fetched by scripts/install_engines.py)
 bin/
 !bin/.gitkeep
