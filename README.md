@@ -80,8 +80,13 @@ xcode-select --install
 
 ```sh
 docker build -t sentinel .
-docker run --rm -v "$PWD:/out" sentinel example.com --stages recon --report /out/report.html
+mkdir -p ./out && chmod 777 ./out
+docker run --rm -v "$PWD/out:/out" sentinel example.com --stages recon --report /out/report.html
 ```
+
+It runs unprivileged, so the output directory must be writable by the
+container's user. If it is not, the agent says so and exits non-zero rather
+than dropping the report.
 
 Runs unprivileged by default. An agent that reports on your infrastructure
 should not be able to rewrite it.
@@ -90,7 +95,7 @@ should not be able to rewrite it.
 
 ```sh
 make              # agent, daemon, engine installer, bench
-make test         # 231 assertions + daemon self-test
+make test         # 237 assertions + daemon self-test
 make static       # static musl daemon (the resident component)
 make static-agent # fully static agent, no shared libraries
 ```
@@ -253,7 +258,7 @@ src/core/           JSON, SHA-256, TLS/HTTP, orchestrator, report, SARIF,
 src/plugins/        19 audit plugins
 src/sentineld.c     native resident daemon
 tools/              engine installer, benchmark
-tests/              231-assertion suite
+tests/              237-assertion suite
 ```
 
 Adding a plugin means one file in `src/plugins/` and one line in the registry in

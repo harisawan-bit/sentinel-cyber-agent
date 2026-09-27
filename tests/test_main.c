@@ -667,6 +667,34 @@ static void test_regressions(void)
             check("every plugin has a run function", runnable);
         }
     }
+
+    /* 10. A scan that could not write its report exited 0. An operator reading
+     *     an exit code has no way to tell a clean scan from a silently dropped
+     *     artifact, which is the worst possible failure for this tool. */
+    {
+        /* write_file must report failure rather than appearing to succeed. */
+        char dir[256];
+        snprintf(dir, sizeof(dir), "/tmp/sentinel_c_ro_%d", (int)getpid());
+        {
+            char *mk[] = { "mkdir", "-p", dir, NULL };
+            proc_run(mk, NULL, 0, 30);
+        }
+        char *chmod[] = { "chmod", "555", dir, NULL };
+        proc_run(chmod, NULL, 0, 30);
+
+        char target[512];
+        snprintf(target, sizeof(target), "%s/should-not-exist.json", dir);
+        check("write_file reports an unwritable destination",
+              write_file(target, "{}", 2) != 0);
+        check("no file was created at the unwritable path", !file_exists(target));
+
+        {
+            char *chmod[] = { "chmod", "755", dir, NULL };
+            proc_run(chmod, NULL, 0, 30);
+            char *rm[] = { "rm", "-rf", dir, NULL };
+            proc_run(rm, NULL, 0, 30);
+        }
+    }
 }
 
 int main(void)

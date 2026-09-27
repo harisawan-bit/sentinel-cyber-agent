@@ -39,7 +39,7 @@ $(AGENT): $(AGENT_OBJ)
 # OpenSSL, since its whole job is to be a tiny always-on tripwire.
 $(DAEMON): src/sentineld.c
 	@mkdir -p bin
-	$(CC) $(CFLAGS) $(CPPFLAGS) $< -o $@
+	$(CC) $(CFLAGS) $(CPPFLAGS) $(LDFLAGS) $< -o $@
 
 %.o: %.c
 	$(CC) $(CFLAGS) $(CPPFLAGS) -c $< -o $@
@@ -50,17 +50,17 @@ test: $(TEST_BIN) $(DAEMON)
 
 $(TEST_BIN): $(TEST_SRC) $(CORE_SRC) $(PLUG_SRC) src/core/registry.c
 	@mkdir -p bin
-	$(CC) $(CFLAGS) $(CPPFLAGS) -o $@ $(TEST_SRC) $(CORE_SRC) $(PLUG_SRC) src/core/registry.c $(LDLIBS)
+	$(CC) $(CFLAGS) $(CPPFLAGS) $(LDFLAGS) -o $@ $(TEST_SRC) $(CORE_SRC) $(PLUG_SRC) src/core/registry.c $(LDLIBS)
 
 install-engines: $(INSTALLER)
 
 $(INSTALLER): tools/install_engines.c $(CORE_SRC) $(STUB_SRC)
 	@mkdir -p bin
-	$(CC) $(CFLAGS) $(CPPFLAGS) -o $@ tools/install_engines.c $(CORE_SRC) $(STUB_SRC) $(LDLIBS)
+	$(CC) $(CFLAGS) $(CPPFLAGS) $(LDFLAGS) -o $@ tools/install_engines.c $(CORE_SRC) $(STUB_SRC) $(LDLIBS)
 
 $(BENCH): tools/bench.c $(CORE_SRC) $(STUB_SRC)
 	@mkdir -p bin
-	$(CC) $(CFLAGS) $(CPPFLAGS) -o $@ tools/bench.c $(CORE_SRC) $(STUB_SRC) $(LDLIBS)
+	$(CC) $(CFLAGS) $(CPPFLAGS) $(LDFLAGS) -o $@ tools/bench.c $(CORE_SRC) $(STUB_SRC) $(LDLIBS)
 
 check: all test
 	@echo "all checks passed"
@@ -92,7 +92,7 @@ static:
 	    musl-gcc $(STATIC_CFLAGS) src/sentineld.c -o $(DAEMON); \
 	else \
 	    echo "musl-gcc not found; building a static glibc daemon instead"; \
-	    $(CC) $(STATIC_CFLAGS) src/sentineld.c -o $(DAEMON); \
+	    $(CC) $(STATIC_CFLAGS) $(LDFLAGS) src/sentineld.c -o $(DAEMON); \
 	fi
 	@ls -la $(DAEMON)
 	@echo "note: build the agent with 'make static-agent'"
@@ -108,7 +108,7 @@ STATIC_AGENT := bin/sentinel-static
 .PHONY: static-agent
 static-agent:
 	@mkdir -p bin
-	$(CC) $(STATIC_AGENT_CFLAGS) $(CPPFLAGS) -o $(STATIC_AGENT) \
+	$(CC) $(STATIC_AGENT_CFLAGS) $(CPPFLAGS) $(LDFLAGS) -o $(STATIC_AGENT) \
 	    src/cli.c $(CORE_SRC) $(PLUG_SRC) src/core/registry.c $(LDLIBS)
 	@ls -la $(STATIC_AGENT)
 	@if ldd $(STATIC_AGENT) >/dev/null 2>&1; then \

@@ -249,13 +249,28 @@ jobs:
       - name: Build the image
         run: docker build -t sentinel .
 
+      # The agent runs as the unprivileged sentinel user, so the output
+      # directory has to be writable by that uid: a root-owned bind mount is
+      # the realistic case and it must work, not just the --user override.
       - name: Run the agent from the image
         run: |
           mkdir -p /tmp/out
+          chmod 777 /tmp/out
           docker run --rm -v /tmp/out:/out sentinel \
-            localhost --stages audit --report /out/report.html
+            localhost --stages audit --report /out/report.html --out /out/findings.json
           test -s /tmp/out/report.html
+          test -s /tmp/out/findings.json
           echo "container ok"
+
+      - name: Verify the image does not run as root
+        run: |
+          uid=$(docker run --rm --entrypoint id sentinel -u)
+          echo "container uid: $uid"
+          if [ "$uid" = "0" ]; then
+            echo "::error::the image runs as root; it must default to unprivileged"
+            exit 1
+          fi
+          echo "container defaults to unprivileged"
 
   hygiene:
     name: repository hygiene

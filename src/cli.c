@@ -20,6 +20,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <errno.h>
 #include <string.h>
 #include <time.h>
 #include <unistd.h>
@@ -75,6 +76,31 @@ static int canary_init(void)
     free(hex);
     if (rc == 0) printf("[+] Initialized honeytoken canary tripwire: .canary_token\n");
     return rc;
+}
+
+/* Every artifact the user explicitly asked for goes through this.
+ *
+ * A scan that cannot write its report and still exits 0 is worse than useless
+ * in a security tool: the operator sees a clean exit code and assumes the
+ * report exists. Any failure is reported on stderr and flips the exit status.
+ */
+static int g_output_failed = 0;
+
+static void emit_file(const char *path, const char *label,
+                      const char *data, size_t len)
+{
+    if (!path || !data) return;
+    if (write_file(path, data, len) != 0) {
+        fprintf(stderr, "[x] could not write the %s to %s: %s\n",
+                label, path, strerror(errno));
+        g_output_failed = 1;
+        return;
+    }
+    size_t n = len;
+    const char *unit = "B";
+    if (n >= 1024 * 1024) { n /= 1024 * 1024; unit = "MB"; }
+    else if (n >= 1024) { n /= 1024; unit = "KB"; }
+    printf("[+] wrote the %s to %s (%zu %s)\n", label, path, n, unit);
 }
 
 /* Write decoy credentials into `dir` for the honeytoken tripwire to watch.
@@ -308,18 +334,18 @@ int main(int argc, char **argv)
 
     if (out_file) {
         char *dump = json_dump(findings, 2);
-        if (dump) { write_file(out_file, dump, strlen(dump)); free(dump); }
+        if (dump) { emit_file(out_file, "findings JSON", dump, strlen(dump)); free(dump); }
     }
     if (sarif_file) {
         json_value_t *doc = sarif_build(orch, "sentinel");
         char *dump = json_dump(doc, 2);
-        if (dump) { write_file(sarif_file, dump, strlen(dump)); free(dump); }
+        if (dump) { emit_file(sarif_file, "SARIF report", dump, strlen(dump)); free(dump); }
         printf("[+] SARIF export written to %s\n", sarif_file);
         json_free(doc);
     }
     if (report_file) {
         char *html = report_render_json(findings, title.data);
-        if (html) { write_file(report_file, html, strlen(html)); free(html); }
+        if (html) { emit_file(report_file, "HTML report", html, strlen(html)); free(html); }
     }
     if (do_notify) {
         char *digest = notifier_digest(orch, title.data);
@@ -351,5 +377,9 @@ int main(int argc, char **argv)
     json_free(findings);
     orch_free(orch);
     (void)do_honeyport;
+    if (g_output_failed) {
+        fprintf(stderr, "[x] one or more requested outputs could not be written\n");
+        return 1;
+    }
     return 0;
 }

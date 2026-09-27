@@ -31,6 +31,12 @@ COPY --from=build /src/bin/sentineld /usr/local/bin/sentineld
 # Unprivileged by default: an agent that reports on a host should not be able to
 # rewrite it. Privileged paths (kernel remediation, systemd install) require
 # opting in explicitly.
+#
+# Because it runs unprivileged, a bind-mounted output directory must be
+# writable by this uid. The agent exits non-zero and says so rather than
+# silently dropping a report, so a permissions mistake is visible immediately:
+#   mkdir -p ./out && chmod 777 ./out
+#   docker run --rm -v "$PWD/out:/out" sentinel example.com --report /out/r.html
 USER sentinel
 ENV SENTINEL_HOME=/var/lib/sentinel
 WORKDIR /var/lib/sentinel
