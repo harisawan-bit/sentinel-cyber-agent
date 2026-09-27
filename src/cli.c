@@ -59,6 +59,7 @@ static void usage(FILE *f)
 "  --telegram-token <tok>     Telegram Bot token\n"
 "  --telegram-chat-id <id>    Telegram Chat ID\n"
 "  --slack-webhook <url>      Slack incoming webhook URL\n"
+  "  --discord-webhook <url>   Discord incoming webhook URL\n"
 "  --version                  print version and exit\n"
 "  -h, --help                 show this help\n");
 }
@@ -165,7 +166,7 @@ int main(int argc, char **argv)
     int do_burner_daemon = 0, do_systemd = 0;
     int burner_ssh = 2222, burner_smtp = 2525, burner_n8n = 5678;
     const char *out_file = NULL, *report_file = NULL, *sarif_file = NULL;
-    const char *tg_token = NULL, *tg_chat = NULL, *slack_wh = NULL;
+    const char *tg_token = NULL, *tg_chat = NULL, *slack_wh = NULL, *discord_wh = NULL;
     const char *positional_after_stage = NULL;
 
     for (int i = 1; i < argc; i++) {
@@ -198,6 +199,7 @@ int main(int argc, char **argv)
         else if (strcmp(a, "--telegram-token") == 0 && i + 1 < argc) tg_token = argv[++i];
         else if (strcmp(a, "--telegram-chat-id") == 0 && i + 1 < argc) tg_chat = argv[++i];
         else if (strcmp(a, "--slack-webhook") == 0 && i + 1 < argc) slack_wh = argv[++i];
+        else if (strcmp(a, "--discord-webhook") == 0 && i + 1 < argc) discord_wh = argv[++i];
         else if (strcmp(a, "--stages") == 0) {
             /* consume following stage words */
             while (i + 1 < argc && argv[i+1][0] != '-' && nstages < 8) stages[nstages++] = argv[++i];
@@ -210,6 +212,23 @@ int main(int argc, char **argv)
         else if (ntargets < MAX_TARGETS) targets[ntargets++] = a;
     }
     targets[ntargets] = NULL;
+
+    sentinel_config_t config;
+    config_init(&config);
+    char config_path[1024];
+    snprintf(config_path, sizeof(config_path), "%s/config.json", paths_state_dir());
+    config_load(&config, config_path);
+
+    if (interval == 300 && config.interval > 0) interval = config.interval;
+    if (!tg_token && config.telegram_token) tg_token = config.telegram_token;
+    if (!tg_chat && config.telegram_chat_id) tg_chat = config.telegram_chat_id;
+    if (!slack_wh && config.slack_webhook) slack_wh = config.slack_webhook;
+    if (!discord_wh && config.discord_webhook) discord_wh = config.discord_webhook;
+    if (!report_file && config.report_path) report_file = config.report_path;
+    if (!nstages && config.stage_count > 0) {
+        for (size_t i = 0; i < config.stage_count && nstages < 8; i++)
+            stages[nstages++] = config.stages[i];
+    }
 
     /* One-shot actions. Each returns early when no scan was requested, matching
      * the Python control flow. */
@@ -298,8 +317,9 @@ int main(int argc, char **argv)
         const char *tok = tg_token ? tg_token : getenv("TELEGRAM_BOT_TOKEN");
         const char *cid = tg_chat  ? tg_chat  : getenv("TELEGRAM_CHAT_ID");
         const char *wh  = slack_wh  ? slack_wh  : getenv("SLACK_WEBHOOK_URL");
+        const char *dwh = discord_wh ? discord_wh : getenv("DISCORD_WEBHOOK_URL");
         daemon_run_loop(orch, targets, interval, stage_mask, report_file,
-                        tok, cid, wh, 0);
+                        tok, cid, wh, dwh, 0);
         orch_free(orch);
         return 0;
     }
@@ -352,10 +372,13 @@ int main(int argc, char **argv)
         const char *tok = tg_token ? tg_token : getenv("TELEGRAM_BOT_TOKEN");
         const char *cid = tg_chat  ? tg_chat  : getenv("TELEGRAM_CHAT_ID");
         const char *wh  = slack_wh  ? slack_wh  : getenv("SLACK_WEBHOOK_URL");
+        const char *dwh = discord_wh ? discord_wh : getenv("DISCORD_WEBHOOK_URL");
         if (tok && cid && notifier_send_telegram(tok, cid, digest))
             printf("[+] Telegram notification sent successfully.\n");
         if (wh && notifier_send_slack(wh, digest))
             printf("[+] Slack notification sent successfully.\n");
+        if (dwh && notifier_send_discord(dwh, digest))
+            printf("[+] Discord notification sent successfully.\n");
         free(digest);
     }
 

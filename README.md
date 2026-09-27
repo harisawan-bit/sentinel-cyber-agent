@@ -1,5 +1,10 @@
 # Sentinel
 
+[![CI](https://github.com/harisawan-bit/sentinel-cyber-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/harisawan-bit/sentinel-cyber-agent/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/harisawan-bit/sentinel-cyber-agent)](https://github.com/harisawan-bit/sentinel-cyber-agent/releases)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![C99](https://img.shields.io/badge/C-99-purple.svg)](https://en.cppreference.com/w/c)
+
 **An autonomous cyber-security agent written in C99.** It maps your attack
 surface, audits the host it runs on, correlates findings against live threat
 intelligence, and reports in HTML, JSON, or SARIF so results drop straight into
